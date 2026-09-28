@@ -1,26 +1,54 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #07060f;
+  --foreground: #f4f2ff;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-neon: #a855f7;
+  --color-neon-soft: #c084fc;
+  --color-lime: #a3e635;
+  --color-coral: #fb7185;
+  --font-sans: ui-sans-serif, system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
 body {
-  background: var(--background);
+  background:
+    radial-gradient(1000px 600px at 12% -10%, rgba(168, 85, 247, 0.28), transparent 60%),
+    radial-gradient(900px 600px at 95% 0%, rgba(56, 189, 248, 0.18), transparent 55%),
+    var(--background);
+  background-attachment: fixed;
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+}
+
+@layer components {
+  .card {
+    @apply rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl shadow-[0_8px_40px_-12px_rgba(0,0,0,0.8)];
+  }
+
+  .btn {
+    @apply rounded-2xl px-5 py-3 font-semibold transition active:scale-[0.98] disabled:opacity-40 disabled:active:scale-100;
+  }
+
+  .btn-primary {
+    @apply rounded-2xl px-5 py-3 font-semibold transition active:scale-[0.98] disabled:opacity-40 disabled:active:scale-100 bg-gradient-to-r from-fuchsia-500 to-violet-500 text-white shadow-lg shadow-fuchsia-500/25 hover:brightness-110;
+  }
+
+  .btn-ghost {
+    @apply rounded-2xl px-5 py-3 font-semibold transition active:scale-[0.98] disabled:opacity-40 disabled:active:scale-100 border border-white/15 bg-white/5 text-white/90 hover:bg-white/10;
+  }
+}
+
+::selection {
+  background: rgba(168, 85, 247, 0.4);
+}
+
+input,
+button {
+  font-family: inherit;
 }
