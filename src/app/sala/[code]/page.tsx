@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { useParams } from "next/navigation";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Shell } from "@/components/Shell";
 import { OptionGrid } from "@/components/OptionGrid";
 import { Waveform } from "@/components/Waveform";
@@ -50,6 +50,7 @@ export default function RoomPage() {
   const [buzzLeft, setBuzzLeft] = useState(0);
   const [playback, setPlayback] = useState<{ at: number; offsetMs: number; clipMs: number | null } | null>(null);
   const [reactions, setReactions] = useState<Reaction[]>([]);
+  const reactionTimers = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
   const selfId = useSyncExternalStore(subscribeSocketId, socketIdSnapshot, () => null);
 
   const { status, playClip, stop, getAnalyser } = usePreviewPlayer(round?.audioUrl ?? null);
@@ -94,9 +95,14 @@ export default function RoomPage() {
       setBlocked(payload.blocked);
       setPlayback({ at: payload.resumeAt, offsetMs: payload.offsetMs, clipMs: null });
     };
+    const timers = reactionTimers.current;
     const onReaction = (payload: Reaction) => {
       setReactions((r) => [...r.slice(-6), payload]);
-      setTimeout(() => setReactions((r) => r.filter((x) => x.id !== payload.id)), 2600);
+      const timer = setTimeout(() => {
+        timers.delete(timer);
+        setReactions((r) => r.filter((x) => x.id !== payload.id));
+      }, 2600);
+      timers.add(timer);
     };
     const onAnswered = ({ name }: { name: string }) => setAnswered((a) => [...a, name]);
     const onError = ({ message }: { message: string }) => setError(message);
@@ -121,6 +127,8 @@ export default function RoomPage() {
       socket.off("buzz_resume", onBuzzResume);
       socket.off("reaction", onReaction);
       socket.off("error_msg", onError);
+      timers.forEach(clearTimeout);
+      timers.clear();
     };
   }, [stop]);
 
@@ -192,6 +200,7 @@ export default function RoomPage() {
   const isBuzzer = round?.mode === "buzzer";
   const myBuzz = Boolean(buzz && selfId && buzz.playerId === selfId);
   const iAmBlocked = Boolean(selfId && blocked.includes(selfId));
+  const votedRematch = Boolean(selfId && state?.rematchVotes.includes(selfId));
 
   if (!joined) {
     return (
@@ -448,14 +457,31 @@ export default function RoomPage() {
               </li>
             ))}
           </ol>
-          {state.status === "finished" && isHost && (
-            <button
-              type="button"
-              className="btn-primary mt-3 w-full"
-              onClick={() => getSocket().emit("start_game")}
-            >
-              Jugar otra vez
-            </button>
+          {state.status === "finished" && (
+            <div className="mt-3 space-y-2">
+              <button
+                type="button"
+                className={votedRematch ? "btn-ghost w-full" : "btn-primary w-full"}
+                onClick={() => getSocket().emit("rematch")}
+              >
+                {votedRematch ? "Pediste revancha ✔" : "Revancha 🔁"}
+              </button>
+              <p className="text-center text-xs text-white/45">
+                {state.rematchVotes.length}/{state.players.length} quieren revancha
+                {state.rematchVotes.length < state.players.length
+                  ? " · arranca sola cuando estén todos"
+                  : ""}
+              </p>
+              {isHost && (
+                <button
+                  type="button"
+                  className="btn-ghost w-full"
+                  onClick={() => getSocket().emit("start_game")}
+                >
+                  Arrancar ya (anfitrión)
+                </button>
+              )}
+            </div>
           )}
         </section>
       )}

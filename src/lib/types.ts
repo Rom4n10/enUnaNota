@@ -43,6 +43,7 @@ export type RoomState = {
   status: "lobby" | "playing" | "reveal" | "finished";
   roundIndex: number;
   players: RoomPlayer[];
+  rematchVotes: string[];
   serverTime: number;
 };
 

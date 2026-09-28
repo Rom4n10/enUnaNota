@@ -49,6 +49,7 @@ type Room = {
   pool: Track[];
   used: Set<number>;
   round: ActiveRound | null;
+  rematch: Set<string>;
   timers: NodeJS.Timeout[];
 };
 
@@ -89,6 +90,7 @@ function roomState(room: Room) {
     status: room.status,
     roundIndex: room.roundIndex,
     players: scoreboard(room),
+    rematchVotes: [...room.rematch],
     serverTime: Date.now(),
   };
 }
@@ -103,6 +105,17 @@ export function registerRooms(io: Server) {
   const emitState = (room: Room) => io.to(room.code).emit("room_state", roomState(room));
 
   const windowOf = (room: Room) => (room.mode === "buzzer" ? BUZZER_WINDOW_MS : ANSWER_WINDOW_MS);
+
+  function startGame(room: Room) {
+    room.roundIndex = 0;
+    room.used.clear();
+    room.rematch.clear();
+    room.players.forEach((p) => {
+      p.score = 0;
+      p.answer = null;
+    });
+    void startRound(room);
+  }
 
   function scheduleEnd(room: Room, ms: number) {
     room.timers.push(setTimeout(() => endRound(room), Math.max(0, ms)));
@@ -265,6 +278,7 @@ export function registerRooms(io: Server) {
         pool: [],
         used: new Set(),
         round: null,
+        rematch: new Set(),
         timers: [],
       };
       room.players.set(socket.id, {
@@ -323,13 +337,21 @@ export function registerRooms(io: Server) {
     socket.on("start_game", () => {
       const room = findRoom();
       if (!room || room.hostId !== socket.id || room.status === "playing") return;
-      room.roundIndex = 0;
-      room.used.clear();
-      room.players.forEach((p) => {
-        p.score = 0;
-        p.answer = null;
-      });
-      void startRound(room);
+      startGame(room);
+    });
+
+    socket.on("rematch", () => {
+      const room = findRoom();
+      const player = room?.players.get(socket.id);
+      if (!room || !player || room.status !== "finished") return;
+      if (room.rematch.has(player.id)) room.rematch.delete(player.id);
+      else room.rematch.add(player.id);
+      const ready = [...room.players.values()].filter((p) => p.connected);
+      if (ready.length > 0 && ready.every((p) => room.rematch.has(p.id))) {
+        startGame(room);
+        return;
+      }
+      emitState(room);
     });
 
     socket.on("buzz", (_payload, ack?: (r: unknown) => void) => {
@@ -399,6 +421,7 @@ export function registerRooms(io: Server) {
       if (!room) return;
       if (room.round?.buzz?.playerId === socket.id) releaseBuzz(room, socket.id, "timeout");
       room.players.delete(socket.id);
+      room.rematch.delete(socket.id);
       if (room.players.size === 0) {
         clearTimers(room);
         rooms.delete(room.code);
