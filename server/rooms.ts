@@ -6,10 +6,14 @@ import { createRound, publicRound, shuffle, solutionOf, type Round } from "./rou
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ";
 const START_DELAY_MS = 1500;
 const ANSWER_WINDOW_MS = 15_000;
+const BUZZER_WINDOW_MS = 29_000;
+const BUZZ_ANSWER_MS = 8000;
+const RESUME_DELAY_MS = 1200;
 const REVEAL_MS = 5000;
 const MAX_PLAYERS = 12;
 
 export type ChaosType = "none" | "double" | "short";
+export type RoomMode = "classic" | "buzzer";
 
 type Player = {
   id: string;
@@ -19,10 +23,24 @@ type Player = {
   answer: { optionId: string; ms: number; correct: boolean; points: number } | null;
 };
 
+type Buzz = { playerId: string; name: string; deadline: number };
+
+type ActiveRound = Round & {
+  startAt: number;
+  chaos: ChaosType;
+  mode: RoomMode;
+  /** Milliseconds of audio already played, accumulated across buzz pauses. */
+  playedMs: number;
+  playingSince: number | null;
+  buzz: Buzz | null;
+  blocked: Set<string>;
+};
+
 type Room = {
   code: string;
   hostId: string;
   categoryId: string;
+  mode: RoomMode;
   totalRounds: number;
   chaosEnabled: boolean;
   status: "lobby" | "playing" | "reveal" | "finished";
@@ -30,7 +48,7 @@ type Room = {
   players: Map<string, Player>;
   pool: Track[];
   used: Set<number>;
-  round: (Round & { startAt: number; chaos: ChaosType }) | null;
+  round: ActiveRound | null;
   timers: NodeJS.Timeout[];
 };
 
@@ -65,6 +83,7 @@ function roomState(room: Room) {
     code: room.code,
     hostId: room.hostId,
     categoryId: room.categoryId,
+    mode: room.mode,
     totalRounds: room.totalRounds,
     chaosEnabled: room.chaosEnabled,
     status: room.status,
@@ -82,6 +101,12 @@ function pointsFor(elapsedMs: number, chaos: ChaosType): number {
 
 export function registerRooms(io: Server) {
   const emitState = (room: Room) => io.to(room.code).emit("room_state", roomState(room));
+
+  const windowOf = (room: Room) => (room.mode === "buzzer" ? BUZZER_WINDOW_MS : ANSWER_WINDOW_MS);
+
+  function scheduleEnd(room: Room, ms: number) {
+    room.timers.push(setTimeout(() => endRound(room), Math.max(0, ms)));
+  }
 
   async function startRound(room: Room) {
     clearTimers(room);
@@ -108,12 +133,21 @@ export function registerRooms(io: Server) {
     const answer = shuffle(available.length >= 4 ? available : room.pool)[0];
     room.used.add(answer.trackId);
 
-    const chaos: ChaosType = room.chaosEnabled && Math.random() < 0.25
+    const chaos: ChaosType = room.mode === "classic" && room.chaosEnabled && Math.random() < 0.25
       ? (Math.random() < 0.5 ? "double" : "short")
       : "none";
     const base = createRound(answer, room.pool);
     const startAt = Date.now() + START_DELAY_MS;
-    room.round = { ...base, startAt, chaos };
+    room.round = {
+      ...base,
+      startAt,
+      chaos,
+      mode: room.mode,
+      playedMs: 0,
+      playingSince: startAt,
+      buzz: null,
+      blocked: new Set(),
+    };
     room.status = "playing";
     room.players.forEach((p) => (p.answer = null));
 
@@ -122,15 +156,71 @@ export function registerRooms(io: Server) {
       roundIndex: room.roundIndex,
       totalRounds: room.totalRounds,
       startAt,
-      answerWindowMs: ANSWER_WINDOW_MS,
+      answerWindowMs: windowOf(room),
       chaos,
+      mode: room.mode,
+      buzzAnswerMs: BUZZ_ANSWER_MS,
       serverTime: Date.now(),
     });
     emitState(room);
 
-    room.timers.push(
-      setTimeout(() => endRound(room), START_DELAY_MS + ANSWER_WINDOW_MS),
-    );
+    scheduleEnd(room, START_DELAY_MS + windowOf(room));
+  }
+
+  /** Freezes the song for everyone and gives the buzzing player the options. */
+  function lockBuzz(room: Room, player: Player) {
+    const round = room.round;
+    if (!round) return;
+    clearTimers(room);
+    const now = Date.now();
+    if (round.playingSince !== null) {
+      round.playedMs += Math.max(0, now - round.playingSince);
+      round.playingSince = null;
+    }
+    round.buzz = { playerId: player.id, name: player.name, deadline: now + BUZZ_ANSWER_MS };
+    io.to(room.code).emit("buzz_lock", {
+      playerId: player.id,
+      name: player.name,
+      deadline: round.buzz.deadline,
+      serverTime: now,
+    });
+    room.timers.push(setTimeout(() => missedBuzz(room, player.id), BUZZ_ANSWER_MS));
+  }
+
+  /** Wrong answer or timeout: the player sits out the song and music resumes. */
+  function releaseBuzz(room: Room, playerId: string, reason: "wrong" | "timeout") {
+    const round = room.round;
+    if (!round || round.buzz?.playerId !== playerId) return;
+    clearTimers(room);
+    round.buzz = null;
+    round.blocked.add(playerId);
+    const name = room.players.get(playerId)?.name ?? "Alguien";
+
+    const alive = [...room.players.values()].filter((p) => p.connected && !round.blocked.has(p.id));
+    const remaining = windowOf(room) - round.playedMs;
+    if (alive.length === 0 || remaining <= 500) {
+      endRound(room);
+      return;
+    }
+
+    const resumeAt = Date.now() + RESUME_DELAY_MS;
+    round.playingSince = resumeAt;
+    io.to(room.code).emit("buzz_resume", {
+      playerId,
+      name,
+      reason,
+      resumeAt,
+      offsetMs: round.playedMs,
+      blocked: [...round.blocked],
+      serverTime: Date.now(),
+    });
+    scheduleEnd(room, RESUME_DELAY_MS + remaining);
+  }
+
+  function missedBuzz(room: Room, playerId: string) {
+    const player = room.players.get(playerId);
+    if (player) player.answer = { optionId: "", ms: 0, correct: false, points: 0 };
+    releaseBuzz(room, playerId, "timeout");
   }
 
   function endRound(room: Room) {
@@ -166,6 +256,7 @@ export function registerRooms(io: Server) {
         code,
         hostId: socket.id,
         categoryId: categoryId ?? "pop-global",
+        mode: "classic",
         totalRounds: 10,
         chaosEnabled: true,
         status: "lobby",
@@ -211,7 +302,7 @@ export function registerRooms(io: Server) {
       emitState(room);
     });
 
-    socket.on("set_config", ({ categoryId, totalRounds, chaosEnabled }: { categoryId?: string; totalRounds?: number; chaosEnabled?: boolean }) => {
+    socket.on("set_config", ({ categoryId, totalRounds, chaosEnabled, mode }: { categoryId?: string; totalRounds?: number; chaosEnabled?: boolean; mode?: RoomMode }) => {
       const room = findRoom();
       if (!room || room.hostId !== socket.id || room.status === "playing") return;
       if (categoryId && categoryId !== room.categoryId) {
@@ -225,6 +316,7 @@ export function registerRooms(io: Server) {
       }
       if (totalRounds) room.totalRounds = Math.max(3, Math.min(20, totalRounds));
       if (typeof chaosEnabled === "boolean") room.chaosEnabled = chaosEnabled;
+      if (mode === "classic" || mode === "buzzer") room.mode = mode;
       emitState(room);
     });
 
@@ -240,10 +332,43 @@ export function registerRooms(io: Server) {
       void startRound(room);
     });
 
+    socket.on("buzz", (_payload, ack?: (r: unknown) => void) => {
+      const room = findRoom();
+      const player = room?.players.get(socket.id);
+      const round = room?.round;
+      if (!room || !player || !round || room.status !== "playing") return ack?.({ ok: false });
+      if (round.mode !== "buzzer" || round.buzz || round.blocked.has(player.id)) return ack?.({ ok: false });
+      if (Date.now() < round.startAt) return ack?.({ ok: false });
+      lockBuzz(room, player);
+      ack?.({ ok: true });
+    });
+
     socket.on("submit_answer", ({ optionId }: { optionId?: string }, ack?: (r: unknown) => void) => {
       const room = findRoom();
       const player = room?.players.get(socket.id);
-      if (!room || !player || !room.round || room.status !== "playing" || player.answer) return;
+      if (!room || !player || !room.round || room.status !== "playing") return;
+
+      if (room.round.mode === "buzzer") {
+        if (room.round.buzz?.playerId !== player.id) return;
+        const correct = optionId === room.round.correctOptionId;
+        player.answer = {
+          optionId: optionId ?? "",
+          ms: Math.max(0, room.round.playedMs),
+          correct,
+          points: correct ? 1 : 0,
+        };
+        ack?.({ ok: true, correct });
+        if (correct) {
+          player.score += 1;
+          clearTimers(room);
+          endRound(room);
+          return;
+        }
+        releaseBuzz(room, player.id, "wrong");
+        return;
+      }
+
+      if (player.answer) return;
       const elapsed = Date.now() - room.round.startAt;
       const correct = optionId === room.round.correctOptionId;
       const points = correct ? pointsFor(elapsed, room.round.chaos) : 0;
@@ -256,9 +381,23 @@ export function registerRooms(io: Server) {
 
     socket.on("ping_time", (_payload, ack?: (r: unknown) => void) => ack?.({ serverTime: Date.now() }));
 
+    socket.on("reaction", ({ emoji }: { emoji?: string }) => {
+      const room = findRoom();
+      const player = room?.players.get(socket.id);
+      if (!room || !player) return;
+      const clean = String(emoji ?? "").slice(0, 4);
+      if (!clean) return;
+      io.to(room.code).emit("reaction", {
+        id: `${socket.id}-${Date.now()}`,
+        name: player.name,
+        emoji: clean,
+      });
+    });
+
     socket.on("disconnect", () => {
       const room = findRoom();
       if (!room) return;
+      if (room.round?.buzz?.playerId === socket.id) releaseBuzz(room, socket.id, "timeout");
       room.players.delete(socket.id);
       if (room.players.size === 0) {
         clearTimers(room);

@@ -147,7 +147,8 @@ export default function RushPage() {
         if (feverTimer.current) clearTimeout(feverTimer.current);
         feverTimer.current = setTimeout(() => setFever(false), FEVER_DURATION_MS);
       }
-      const points = Math.round((100 + Math.max(0, 200 - elapsed / 10)) * (fever ? 2 : 1));
+      const feverActive = fever || nextCombo >= 3;
+      const points = Math.round((100 + Math.max(0, 200 - elapsed / 10)) * (feverActive ? 2 : 1));
       setScore((s) => s + points);
       setSolved((s) => s + 1);
       deadline.current += BONUS_MS;

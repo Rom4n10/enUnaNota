@@ -26,6 +26,12 @@ export const getRound = (categoryId: string, exclude: number[]) =>
     body: JSON.stringify({ categoryId, exclude }),
   });
 
+export const getYearRound = (categoryId: string, exclude: number[]) =>
+  request<RoundPayload>("/api/year/round", {
+    method: "POST",
+    body: JSON.stringify({ categoryId, exclude }),
+  });
+
 export const getArtistRound = (artist: string, exclude: number[]) =>
   request<RoundPayload & { total: number }>("/api/artist/round", {
     method: "POST",

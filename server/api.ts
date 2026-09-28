@@ -12,6 +12,7 @@ import { getArtistTracks, getCategoryTracks, searchTracks, type Track } from "./
 import { submitScore, topScores, weekKey } from "./leaderboard.js";
 import {
   createRound,
+  createYearRound,
   getRound,
   matchesTitle,
   publicRound,
@@ -82,6 +83,20 @@ api.post("/round", async (req, res) => {
   const available = pool.filter((t) => !used.has(t.trackId));
   const answer = shuffle(available.length >= 4 ? available : pool)[0];
   const round = createRound(answer, pool);
+  res.json({ ...publicRound(round), trackId: answer.trackId });
+});
+
+api.post("/year/round", async (req, res) => {
+  const { categoryId, exclude } = req.body as { categoryId?: string; exclude?: number[] };
+  const pool = (await poolFor(categoryId ?? "pop-global")).filter((t) => t.year !== null);
+  if (pool.length < 4) {
+    res.status(503).json({ error: "catalog_unavailable" });
+    return;
+  }
+  const used = new Set(exclude ?? []);
+  const available = pool.filter((t) => !used.has(t.trackId));
+  const answer = shuffle(available.length ? available : pool)[0];
+  const round = createYearRound(answer);
   res.json({ ...publicRound(round), trackId: answer.trackId });
 });
 

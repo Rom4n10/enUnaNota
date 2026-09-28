@@ -16,6 +16,7 @@ export type Solution = {
   title: string;
   artist: string;
   artwork: string;
+  year: number | null;
   correctOptionId: string;
 };
 
@@ -85,6 +86,32 @@ export function createRound(answer: Track, pool: Track[], withOptions = true): R
   return round;
 }
 
+/** Same round shape, but the options are release years instead of titles. */
+export function createYearRound(answer: Track): Round {
+  const year = answer.year ?? new Date().getFullYear();
+  const thisYear = new Date().getFullYear();
+  const candidates = new Set<number>();
+  while (candidates.size < 3) {
+    const delta = (Math.random() < 0.5 ? -1 : 1) * (2 + Math.floor(Math.random() * 8));
+    const candidate = Math.min(thisYear, Math.max(1960, year + delta));
+    if (candidate !== year) candidates.add(candidate);
+  }
+  const entries = shuffle([
+    { id: randomUUID(), label: String(year), correct: true },
+    ...[...candidates].map((y) => ({ id: randomUUID(), label: String(y), correct: false })),
+  ]);
+  const round: Round = {
+    id: randomUUID(),
+    track: answer,
+    options: entries.map(({ id, label: text }) => ({ id, label: text })),
+    correctOptionId: entries.find((e) => e.correct)!.id,
+    createdAt: Date.now(),
+  };
+  rounds.set(round.id, round);
+  warmPreview(answer.previewUrl);
+  return round;
+}
+
 export function getRound(id: string): Round | undefined {
   return rounds.get(id);
 }
@@ -94,6 +121,7 @@ export function solutionOf(round: Round): Solution {
     title: round.track.title,
     artist: round.track.artist,
     artwork: round.track.artwork,
+    year: round.track.year,
     correctOptionId: round.correctOptionId,
   };
 }

@@ -27,7 +27,7 @@ const MODES = [
     emoji: "🎉",
     title: "Sala de Amigos",
     tagline: "2 a 12 jugadores",
-    detail: "Código de 4 letras, audio sincronizado y puntaje por velocidad.",
+    detail: "Código de 4 letras, audio sincronizado y modo buzzer: el primero que aprieta corta el tema.",
     accent: "from-sky-500/25 to-emerald-500/10",
   },
   {
@@ -37,6 +37,14 @@ const MODES = [
     tagline: "Discografía",
     detail: "10 temas de un artista escuchando solo el primer segundo. Ganás insignias.",
     accent: "from-emerald-500/25 to-cyan-500/10",
+  },
+  {
+    href: "/anio",
+    emoji: "🕰️",
+    title: "Adiviná el año",
+    tagline: "Máquina del tiempo",
+    detail: "8 segundos por tema y cuatro años posibles. ¿Sabés de qué época es cada hit?",
+    accent: "from-indigo-500/25 to-fuchsia-500/10",
   },
 ];
 
