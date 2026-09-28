@@ -29,7 +29,7 @@ export type ScoreEntry = { name: string; score: number; at: number };
 
 export type ChaosType = "none" | "double" | "short";
 
-export type RoomMode = "classic" | "buzzer";
+export type RoomMode = "classic" | "buzzer" | "auction";
 
 export type RoomPlayer = { id: string; name: string; score: number; connected: boolean };
 
@@ -55,8 +55,25 @@ export type RoundStart = RoundPayload & {
   chaos: ChaosType;
   mode: RoomMode;
   buzzAnswerMs: number;
+  clipMs?: number;
+  auctionWinnerId?: string;
+  bidSeconds?: number;
   serverTime: number;
 };
+
+export type AuctionStart = {
+  roundIndex: number;
+  totalRounds: number;
+  hint: string;
+  minBid: number;
+  maxBid: number;
+  deadline: number;
+  serverTime: number;
+};
+
+export type AuctionResult = { playerId: string | null; name: string | null; seconds: number | null };
+
+export type BidPlaced = { playerId: string; name: string; seconds: number };
 
 export type BuzzLock = { playerId: string; name: string; deadline: number; serverTime: number };
 
@@ -71,6 +88,21 @@ export type BuzzResume = {
 };
 
 export type Reaction = { id: string; name: string; emoji: string };
+
+export type ImpostorRound = {
+  groupId: string;
+  artist: string;
+  clips: { clipId: string; audioUrl: string }[];
+};
+
+export type ImpostorResult = {
+  correct: boolean;
+  clips: { clipId: string; title: string; artist: string; artwork: string; impostor: boolean }[];
+};
+
+export type ChainRound = RoundPayload & { from: string };
+
+export type ChainGuess = { correct: boolean; solution: Solution; nextArtist: string | null };
 
 export type RoundEnd = {
   solution: Solution;

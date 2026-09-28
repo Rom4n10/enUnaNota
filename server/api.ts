@@ -11,6 +11,15 @@ import {
 import { getArtistTracks, getCategoryTracks, searchTracks, type Track } from "./itunes.js";
 import { submitScore, topScores, weekKey } from "./leaderboard.js";
 import {
+  chainPartner,
+  createImpostorGroup,
+  findCollab,
+  partnerOf,
+  publicImpostor,
+  rememberChainPartner,
+  solveImpostor,
+} from "./modes.js";
+import {
   createRound,
   createYearRound,
   getRound,
@@ -98,6 +107,91 @@ api.post("/year/round", async (req, res) => {
   const answer = shuffle(available.length ? available : pool)[0];
   const round = createYearRound(answer);
   res.json({ ...publicRound(round), trackId: answer.trackId });
+});
+
+api.post("/timeline/round", async (req, res) => {
+  const { categoryId, exclude } = req.body as { categoryId?: string; exclude?: number[] };
+  const pool = (await poolFor(categoryId ?? "pop-global")).filter((t) => t.year !== null);
+  if (pool.length < 4) {
+    res.status(503).json({ error: "catalog_unavailable" });
+    return;
+  }
+  const used = new Set(exclude ?? []);
+  const available = pool.filter((t) => !used.has(t.trackId));
+  const answer = shuffle(available.length ? available : pool)[0];
+  const round = createRound(answer, pool, false);
+  res.json({ ...publicRound(round), trackId: answer.trackId });
+});
+
+api.post("/timeline/guess", (req, res) => {
+  const { roundId, after, before } = req.body as {
+    roundId?: string;
+    after?: number | null;
+    before?: number | null;
+  };
+  const round = roundId ? getRound(roundId) : undefined;
+  if (!round) {
+    res.status(404).json({ error: "round_not_found" });
+    return;
+  }
+  const year = round.track.year ?? 0;
+  const correct = year > (after ?? -Infinity) && year <= (before ?? Infinity);
+  res.json({ correct, solution: solutionOf(round) });
+});
+
+api.post("/impostor/round", async (req, res) => {
+  const { categoryId } = req.body as { categoryId?: string };
+  const pool = await poolFor(categoryId ?? "pop-global");
+  const group = createImpostorGroup(pool);
+  if (!group) {
+    res.status(503).json({ error: "catalog_unavailable" });
+    return;
+  }
+  res.json(publicImpostor(group));
+});
+
+api.post("/impostor/guess", (req, res) => {
+  const { groupId, clipId } = req.body as { groupId?: string; clipId?: string };
+  const result = groupId ? solveImpostor(groupId, String(clipId ?? "")) : null;
+  if (!result) {
+    res.status(404).json({ error: "round_not_found" });
+    return;
+  }
+  res.json(result);
+});
+
+api.post("/chain/round", async (req, res) => {
+  const { artist, exclude } = req.body as { artist?: string; exclude?: number[] };
+  const seed = (artist ?? "").trim();
+  if (!seed) {
+    res.status(400).json({ error: "artist_required" });
+    return;
+  }
+  const used = new Set(exclude ?? []);
+  const collab = await findCollab(seed, used);
+  if (!collab) {
+    res.status(404).json({ error: "chain_dead_end" });
+    return;
+  }
+  const partner = partnerOf(collab);
+  const pool = await getArtistTracks(seed, 20);
+  const round = createRound(collab, pool.length >= 4 ? pool : await poolFor("pop-global"));
+  if (partner) rememberChainPartner(round.id, partner);
+  res.json({ ...publicRound(round), trackId: collab.trackId, from: seed });
+});
+
+api.post("/chain/guess", (req, res) => {
+  const { roundId, optionId } = req.body as { roundId?: string; optionId?: string };
+  const round = roundId ? getRound(roundId) : undefined;
+  if (!round) {
+    res.status(404).json({ error: "round_not_found" });
+    return;
+  }
+  res.json({
+    correct: optionId === round.correctOptionId,
+    solution: solutionOf(round),
+    nextArtist: chainPartner(round.id),
+  });
 });
 
 api.post("/artist/round", async (req, res) => {

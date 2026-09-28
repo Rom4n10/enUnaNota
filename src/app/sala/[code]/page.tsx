@@ -8,8 +8,12 @@ import { OptionGrid } from "@/components/OptionGrid";
 import { Waveform } from "@/components/Waveform";
 import { getCategories } from "@/lib/api";
 import { getSocket, serverNow, socketIdSnapshot, subscribeSocketId, syncClock } from "@/lib/socket";
+import { shareText } from "@/lib/share";
 import { updateProfile } from "@/lib/storage";
 import type {
+  AuctionResult,
+  AuctionStart,
+  BidPlaced,
   BuzzLock,
   BuzzResume,
   Category,
@@ -49,6 +53,11 @@ export default function RoomPage() {
   const [blocked, setBlocked] = useState<string[]>([]);
   const [buzzLeft, setBuzzLeft] = useState(0);
   const [playback, setPlayback] = useState<{ at: number; offsetMs: number; clipMs: number | null } | null>(null);
+  const [auction, setAuction] = useState<AuctionStart | null>(null);
+  const [bids, setBids] = useState<BidPlaced[]>([]);
+  const [auctionResult, setAuctionResult] = useState<AuctionResult | null>(null);
+  const [bidLeft, setBidLeft] = useState(0);
+  const [myBid, setMyBid] = useState<number | null>(null);
   const [reactions, setReactions] = useState<Reaction[]>([]);
   const reactionTimers = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
   const selfId = useSyncExternalStore(subscribeSocketId, socketIdSnapshot, () => null);
@@ -71,11 +80,28 @@ export default function RoomPage() {
       setAnswered([]);
       setBuzz(null);
       setBlocked([]);
+      setAuction(null);
       setPlayback({
         at: payload.startAt,
         offsetMs: 0,
-        clipMs: payload.chaos === "short" ? 2000 : null,
+        clipMs: payload.mode === "auction" ? payload.clipMs ?? null : payload.chaos === "short" ? 2000 : null,
       });
+    };
+    const onAuctionStart = (payload: AuctionStart) => {
+      stop();
+      setAuction(payload);
+      setAuctionResult(null);
+      setBids([]);
+      setMyBid(null);
+      setRound(null);
+      setResult(null);
+      setPlayback(null);
+    };
+    const onBidPlaced = (payload: BidPlaced) =>
+      setBids((list) => [...list.filter((b) => b.playerId !== payload.playerId), payload]);
+    const onAuctionResult = (payload: AuctionResult) => {
+      setAuction(null);
+      setAuctionResult(payload);
     };
     const onRoundEnd = (payload: RoundEnd) => {
       stop();
@@ -113,6 +139,9 @@ export default function RoomPage() {
     socket.on("round_start", onRoundStart);
     socket.on("round_end", onRoundEnd);
     socket.on("player_answered", onAnswered);
+    socket.on("auction_start", onAuctionStart);
+    socket.on("bid_placed", onBidPlaced);
+    socket.on("auction_result", onAuctionResult);
     socket.on("buzz_lock", onBuzzLock);
     socket.on("buzz_resume", onBuzzResume);
     socket.on("reaction", onReaction);
@@ -123,6 +152,9 @@ export default function RoomPage() {
       socket.off("round_start", onRoundStart);
       socket.off("round_end", onRoundEnd);
       socket.off("player_answered", onAnswered);
+      socket.off("auction_start", onAuctionStart);
+      socket.off("bid_placed", onBidPlaced);
+      socket.off("auction_result", onAuctionResult);
       socket.off("buzz_lock", onBuzzLock);
       socket.off("buzz_resume", onBuzzResume);
       socket.off("reaction", onReaction);
@@ -135,13 +167,21 @@ export default function RoomPage() {
   // Start (or resume) playback exactly at the timestamp the server scheduled.
   useEffect(() => {
     if (!playback || status !== "ready") return;
+    // In the auction only the player who won the bid gets to hear the clip.
+    if (round?.mode === "auction" && round.auctionWinnerId !== selfId) return;
     const delay = playback.at - serverNow();
     if (delay > 0) {
       const id = setTimeout(() => playClip(playback.clipMs, playback.offsetMs), delay);
       return () => clearTimeout(id);
     }
     playClip(playback.clipMs, Math.min(25_000, playback.offsetMs - delay));
-  }, [playback, status, playClip]);
+  }, [playback, status, playClip, round, selfId]);
+
+  useEffect(() => {
+    if (!auction) return;
+    const id = setInterval(() => setBidLeft(Math.max(0, auction.deadline - serverNow())), 100);
+    return () => clearInterval(id);
+  }, [auction]);
 
   useEffect(() => {
     if (!buzz) return;
@@ -178,6 +218,12 @@ export default function RoomPage() {
     getSocket().emit("submit_answer", { optionId });
   }
 
+  function placeBid(seconds: number) {
+    getSocket().emit("bid", { seconds }, (res: { ok: boolean }) => {
+      if (res?.ok) setMyBid(seconds);
+    });
+  }
+
   function hitBuzzer() {
     getSocket().emit("buzz", {});
   }
@@ -185,11 +231,7 @@ export default function RoomPage() {
   async function shareLink() {
     const url = `${window.location.origin}/sala/${code}`;
     const text = `¡Sumate a mi sala de En Una Nota! Código ${code}\n${url}`;
-    if (navigator.share) {
-      await navigator.share({ text }).catch(() => undefined);
-      return;
-    }
-    await navigator.clipboard.writeText(text).catch(() => undefined);
+    if ((await shareText(text)) === "failed") return;
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
@@ -198,9 +240,12 @@ export default function RoomPage() {
   const joined = manuallyJoined || state?.code === code;
   const isHost = Boolean(state && selfId && state.hostId === selfId);
   const isBuzzer = round?.mode === "buzzer";
+  const isAuction = round?.mode === "auction";
+  const wonAuction = Boolean(isAuction && selfId && round?.auctionWinnerId === selfId);
   const myBuzz = Boolean(buzz && selfId && buzz.playerId === selfId);
   const iAmBlocked = Boolean(selfId && blocked.includes(selfId));
-  const votedRematch = Boolean(selfId && state?.rematchVotes.includes(selfId));
+  const rematchVotes = state?.rematchVotes ?? [];
+  const votedRematch = Boolean(selfId && rematchVotes.includes(selfId));
 
   if (!joined) {
     return (
@@ -261,7 +306,7 @@ export default function RoomPage() {
                 ))}
               </div>
               <div className="grid grid-cols-2 gap-2">
-                {(["classic", "buzzer"] as const).map((m) => (
+                {(["classic", "buzzer", "auction"] as const).map((m) => (
                   <button
                     key={m}
                     type="button"
@@ -273,24 +318,26 @@ export default function RoomPage() {
                     }`}
                   >
                     <span className="block font-bold">
-                      {m === "classic" ? "⚡ Clásico" : "🔔 Buzzer"}
+                      {m === "classic" ? "⚡ Clásico" : m === "buzzer" ? "🔔 Buzzer" : "💰 Subasta"}
                     </span>
                     <span className="block text-xs text-white/50">
                       {m === "classic"
                         ? "Todos responden, gana la velocidad"
-                        : "El primero que aprieta corta el tema"}
+                        : m === "buzzer"
+                          ? "El primero que aprieta corta el tema"
+                          : "Apostás segundos: el más audaz escucha"}
                     </span>
                   </button>
                 ))}
               </div>
               <label
                 className={`flex items-center gap-3 text-sm text-white/70 ${
-                  state.mode === "buzzer" ? "opacity-40" : ""
+                  state.mode !== "classic" ? "opacity-40" : ""
                 }`}
               >
                 <input
                   type="checkbox"
-                  disabled={state.mode === "buzzer"}
+                  disabled={state.mode !== "classic"}
                   checked={state.chaosEnabled}
                   onChange={(e) =>
                     getSocket().emit("set_config", { chaosEnabled: e.target.checked })
@@ -311,6 +358,60 @@ export default function RoomPage() {
         </section>
       )}
 
+      {auction && (
+        <section className="card space-y-4 p-5">
+          <div className="flex items-center justify-between text-xs uppercase tracking-widest text-white/40">
+            <span>
+              Ronda {auction.roundIndex + 1} / {auction.totalRounds}
+            </span>
+            <span className="tabular-nums">{(bidLeft / 1000).toFixed(1)}s</span>
+          </div>
+          <p className="rounded-2xl bg-amber-400/10 px-4 py-3 text-center text-sm text-amber-100">
+            💰 {auction.hint}
+          </p>
+          <p className="text-center text-sm text-white/60">
+            ¿En cuántos segundos la sacás? La apuesta más baja se lleva el turno.
+          </p>
+          <div className="grid grid-cols-6 gap-2">
+            {Array.from({ length: auction.maxBid - auction.minBid + 1 }, (_, i) => auction.minBid + i).map(
+              (s) => (
+                <button
+                  key={s}
+                  type="button"
+                  disabled={myBid !== null && s >= myBid}
+                  onClick={() => placeBid(s)}
+                  className={`rounded-2xl border py-3 text-lg font-black transition disabled:opacity-30 ${
+                    myBid === s
+                      ? "border-amber-400/70 bg-amber-500/25"
+                      : "border-white/12 bg-white/5 hover:bg-white/10"
+                  }`}
+                >
+                  {s}
+                </button>
+              ),
+            )}
+          </div>
+          <ul className="space-y-1 text-sm">
+            {[...bids]
+              .sort((a, b) => a.seconds - b.seconds)
+              .map((b) => (
+                <li key={b.playerId} className="flex justify-between text-white/70">
+                  <span>{b.name}</span>
+                  <span className="tabular-nums">{b.seconds}s</span>
+                </li>
+              ))}
+          </ul>
+        </section>
+      )}
+
+      {auctionResult && !round && !auction && (
+        <p className="text-center text-sm text-white/60">
+          {auctionResult.name
+            ? `${auctionResult.name} se la juega en ${auctionResult.seconds}s…`
+            : "Nadie apostó, tema quemado"}
+        </p>
+      )}
+
       {round && (
         <section className="card space-y-4 p-5">
           <div className="flex items-center justify-between text-xs uppercase tracking-widest text-white/40">
@@ -318,7 +419,7 @@ export default function RoomPage() {
               Ronda {round.roundIndex + 1} / {round.totalRounds}
             </span>
             <span className="tabular-nums">
-              {isBuzzer ? "🔔 Buzzer" : `${(countdown / 1000).toFixed(1)}s`}
+              {isBuzzer ? "🔔 Buzzer" : isAuction ? `💰 ${round.bidSeconds}s` : `${(countdown / 1000).toFixed(1)}s`}
             </span>
           </div>
           {round.chaos !== "none" && (
@@ -330,7 +431,25 @@ export default function RoomPage() {
             <Waveform active={status === "playing"} getAnalyser={getAnalyser} color="#38bdf8" />
           </div>
 
-          {isBuzzer ? (
+          {isAuction ? (
+            wonAuction ? (
+              <>
+                <p className="text-center text-sm text-amber-200">
+                  Ganaste la subasta: {round.bidSeconds}s de audio. ¡Dale!
+                </p>
+                <OptionGrid
+                  options={round.options}
+                  onPick={pick}
+                  pickedId={picked}
+                  locked={Boolean(picked)}
+                />
+              </>
+            ) : (
+              <p className="rounded-2xl bg-amber-400/10 py-6 text-center text-lg font-bold text-amber-100">
+                {auctionResult?.name ?? "Alguien"} se la juega en {round.bidSeconds}s…
+              </p>
+            )
+          ) : isBuzzer ? (
             myBuzz ? (
               <>
                 <p className="text-center text-sm text-emerald-300">
@@ -467,8 +586,8 @@ export default function RoomPage() {
                 {votedRematch ? "Pediste revancha ✔" : "Revancha 🔁"}
               </button>
               <p className="text-center text-xs text-white/45">
-                {state.rematchVotes.length}/{state.players.length} quieren revancha
-                {state.rematchVotes.length < state.players.length
+                {rematchVotes.length}/{state.players.length} quieren revancha
+                {rematchVotes.length < state.players.length
                   ? " · arranca sola cuando estén todos"
                   : ""}
               </p>

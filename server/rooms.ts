@@ -11,9 +11,12 @@ const BUZZ_ANSWER_MS = 8000;
 const RESUME_DELAY_MS = 1200;
 const REVEAL_MS = 5000;
 const MAX_PLAYERS = 12;
+const BIDDING_MS = 12_000;
+const BID_MIN = 1;
+const BID_MAX = 6;
 
 export type ChaosType = "none" | "double" | "short";
-export type RoomMode = "classic" | "buzzer";
+export type RoomMode = "classic" | "buzzer" | "auction";
 
 type Player = {
   id: string;
@@ -34,6 +37,9 @@ type ActiveRound = Round & {
   playingSince: number | null;
   buzz: Buzz | null;
   blocked: Set<string>;
+  /** Auction mode: who won the bid and how many seconds of audio they bought. */
+  auctionWinnerId: string | null;
+  bidSeconds: number | null;
 };
 
 type Room = {
@@ -49,6 +55,7 @@ type Room = {
   pool: Track[];
   used: Set<number>;
   round: ActiveRound | null;
+  bids: Map<string, number>;
   rematch: Set<string>;
   timers: NodeJS.Timeout[];
 };
@@ -93,6 +100,13 @@ function roomState(room: Room) {
     rematchVotes: [...room.rematch],
     serverTime: Date.now(),
   };
+}
+
+/** Text clue for the auction: enough to bluff with, never enough to answer. */
+function hintFor(track: Track): string {
+  const decade = track.year ? `de los ${Math.floor(track.year / 10) * 10}` : "de época incierta";
+  const genre = track.genre || "Un tema";
+  return `${genre} ${decade} · el artista empieza con "${track.artist.slice(0, 1).toUpperCase()}"`;
 }
 
 function pointsFor(elapsedMs: number, chaos: ChaosType): number {
@@ -160,9 +174,28 @@ export function registerRooms(io: Server) {
       playingSince: startAt,
       buzz: null,
       blocked: new Set(),
+      auctionWinnerId: null,
+      bidSeconds: null,
     };
     room.status = "playing";
     room.players.forEach((p) => (p.answer = null));
+
+    if (room.mode === "auction") {
+      room.bids.clear();
+      const deadline = Date.now() + BIDDING_MS;
+      io.to(room.code).emit("auction_start", {
+        roundIndex: room.roundIndex,
+        totalRounds: room.totalRounds,
+        hint: hintFor(answer),
+        minBid: BID_MIN,
+        maxBid: BID_MAX,
+        deadline,
+        serverTime: Date.now(),
+      });
+      emitState(room);
+      room.timers.push(setTimeout(() => closeAuction(room), BIDDING_MS));
+      return;
+    }
 
     io.to(room.code).emit("round_start", {
       ...publicRound(base),
@@ -178,6 +211,52 @@ export function registerRooms(io: Server) {
     emitState(room);
 
     scheduleEnd(room, START_DELAY_MS + windowOf(room));
+  }
+
+  /** Lowest bid wins (earliest bid breaks ties) and only that player hears the clip. */
+  function closeAuction(room: Room) {
+    const round = room.round;
+    if (!round || room.status !== "playing") return;
+    clearTimers(room);
+
+    let winner: Player | null = null;
+    let best = Number.POSITIVE_INFINITY;
+    for (const [playerId, seconds] of room.bids) {
+      const player = room.players.get(playerId);
+      if (!player || !player.connected || seconds >= best) continue;
+      winner = player;
+      best = seconds;
+    }
+
+    if (!winner) {
+      io.to(room.code).emit("auction_result", { playerId: null, name: null, seconds: null });
+      endRound(room);
+      return;
+    }
+
+    round.auctionWinnerId = winner.id;
+    round.bidSeconds = best;
+    const clipMs = best * 1000;
+    const startAt = Date.now() + START_DELAY_MS;
+    round.startAt = startAt;
+    round.playingSince = startAt;
+
+    io.to(room.code).emit("auction_result", { playerId: winner.id, name: winner.name, seconds: best });
+    io.to(room.code).emit("round_start", {
+      ...publicRound(round),
+      roundIndex: room.roundIndex,
+      totalRounds: room.totalRounds,
+      startAt,
+      answerWindowMs: clipMs + BUZZ_ANSWER_MS,
+      chaos: "none" as ChaosType,
+      mode: room.mode,
+      buzzAnswerMs: BUZZ_ANSWER_MS,
+      clipMs,
+      auctionWinnerId: winner.id,
+      bidSeconds: best,
+      serverTime: Date.now(),
+    });
+    scheduleEnd(room, START_DELAY_MS + clipMs + BUZZ_ANSWER_MS);
   }
 
   /** Freezes the song for everyone and gives the buzzing player the options. */
@@ -278,6 +357,7 @@ export function registerRooms(io: Server) {
         pool: [],
         used: new Set(),
         round: null,
+        bids: new Map(),
         rematch: new Set(),
         timers: [],
       };
@@ -330,7 +410,7 @@ export function registerRooms(io: Server) {
       }
       if (totalRounds) room.totalRounds = Math.max(3, Math.min(20, totalRounds));
       if (typeof chaosEnabled === "boolean") room.chaosEnabled = chaosEnabled;
-      if (mode === "classic" || mode === "buzzer") room.mode = mode;
+      if (mode === "classic" || mode === "buzzer" || mode === "auction") room.mode = mode;
       emitState(room);
     });
 
@@ -354,6 +434,22 @@ export function registerRooms(io: Server) {
       emitState(room);
     });
 
+    socket.on("bid", ({ seconds }: { seconds?: number }, ack?: (r: unknown) => void) => {
+      const room = findRoom();
+      const player = room?.players.get(socket.id);
+      const round = room?.round;
+      if (!room || !player || !round || room.mode !== "auction") return ack?.({ ok: false });
+      if (round.auctionWinnerId || room.status !== "playing") return ack?.({ ok: false });
+      const value = Math.round(Number(seconds));
+      if (!Number.isFinite(value) || value < BID_MIN || value > BID_MAX) return ack?.({ ok: false });
+      const current = room.bids.get(player.id);
+      if (current !== undefined && current <= value) return ack?.({ ok: false });
+      room.bids.delete(player.id);
+      room.bids.set(player.id, value);
+      io.to(room.code).emit("bid_placed", { playerId: player.id, name: player.name, seconds: value });
+      ack?.({ ok: true });
+    });
+
     socket.on("buzz", (_payload, ack?: (r: unknown) => void) => {
       const room = findRoom();
       const player = room?.players.get(socket.id);
@@ -369,6 +465,28 @@ export function registerRooms(io: Server) {
       const room = findRoom();
       const player = room?.players.get(socket.id);
       if (!room || !player || !room.round || room.status !== "playing") return;
+
+      if (room.round.mode === "auction") {
+        const round = room.round;
+        if (round.auctionWinnerId !== player.id || player.answer) return;
+        const bid = round.bidSeconds ?? BID_MAX;
+        const correct = optionId === round.correctOptionId;
+        const stake = (BID_MAX + 1 - bid) * 100;
+        player.answer = { optionId: optionId ?? "", ms: bid * 1000, correct, points: correct ? stake : 0 };
+        if (correct) {
+          player.score += stake;
+        } else {
+          room.players.forEach((p) => {
+            if (p.id === player.id || !p.connected) return;
+            p.score += Math.round(stake / 2);
+            p.answer = { optionId: "", ms: 0, correct: false, points: Math.round(stake / 2) };
+          });
+        }
+        ack?.({ ok: true, correct });
+        clearTimers(room);
+        endRound(room);
+        return;
+      }
 
       if (room.round.mode === "buzzer") {
         if (room.round.buzz?.playerId !== player.id) return;
@@ -422,6 +540,7 @@ export function registerRooms(io: Server) {
       if (room.round?.buzz?.playerId === socket.id) releaseBuzz(room, socket.id, "timeout");
       room.players.delete(socket.id);
       room.rematch.delete(socket.id);
+      room.bids.delete(socket.id);
       if (room.players.size === 0) {
         clearTimers(room);
         rooms.delete(room.code);

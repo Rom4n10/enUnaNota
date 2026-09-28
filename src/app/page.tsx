@@ -27,7 +27,8 @@ const MODES = [
     emoji: "🎉",
     title: "Sala de Amigos",
     tagline: "2 a 12 jugadores",
-    detail: "Código de 4 letras, audio sincronizado y modo buzzer: el primero que aprieta corta el tema.",
+    detail:
+      "Código de 4 letras, audio sincronizado, buzzer y la Subasta de Segundos: el que menos segundos apuesta se juega el tema.",
     accent: "from-sky-500/25 to-emerald-500/10",
   },
   {
@@ -45,6 +46,30 @@ const MODES = [
     tagline: "Máquina del tiempo",
     detail: "8 segundos por tema y cuatro años posibles. ¿Sabés de qué época es cada hit?",
     accent: "from-indigo-500/25 to-fuchsia-500/10",
+  },
+  {
+    href: "/linea",
+    emoji: "🧭",
+    title: "Time Machine",
+    tagline: "Línea de tiempo",
+    detail: "2,5 segundos y a ubicar el tema en tu línea. Cada acierto la hace más difícil.",
+    accent: "from-violet-500/25 to-sky-500/10",
+  },
+  {
+    href: "/impostor",
+    emoji: "🕵️",
+    title: "El Impostor",
+    tagline: "Tres fragmentos",
+    detail: "Dos clips son del mismo artista y uno se coló. Encontrá al impostor en 1,5s.",
+    accent: "from-amber-500/25 to-lime-500/10",
+  },
+  {
+    href: "/cadena",
+    emoji: "🔗",
+    title: "Cadena de Feats",
+    tagline: "6 grados",
+    detail: "Bizarrap → Quevedo → Duki… acertá la colaboración y seguí la cadena contrarreloj.",
+    accent: "from-emerald-500/25 to-teal-500/10",
   },
 ];
 

@@ -13,6 +13,7 @@ import {
   saveDailyResult,
   type DailyResult,
 } from "@/lib/storage";
+import { shareText } from "@/lib/share";
 import type { DailyPayload, Solution } from "@/lib/types";
 import { usePreviewPlayer } from "@/lib/useAudio";
 
@@ -100,11 +101,7 @@ export default function DailyPage() {
       { date: daily.date, attempts, won, finished: true },
       daily.maxAttempts,
     )}\n${window.location.origin}`;
-    if (navigator.share) {
-      await navigator.share({ text }).catch(() => undefined);
-      return;
-    }
-    await navigator.clipboard.writeText(text).catch(() => undefined);
+    if ((await shareText(text)) === "failed") return;
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
