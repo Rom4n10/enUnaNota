@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Track } from "./itunes.js";
+import { warmPreview } from "./previewCache.js";
 
 export type Option = { id: string; label: string };
 
@@ -80,6 +81,7 @@ export function createRound(answer: Track, pool: Track[], withOptions = true): R
   }
   const round: Round = { id, track: answer, options, correctOptionId, createdAt: Date.now() };
   rounds.set(id, round);
+  warmPreview(answer.previewUrl);
   return round;
 }
 

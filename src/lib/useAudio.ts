@@ -20,6 +20,36 @@ function getAnalyser(): AnalyserNode | null {
 }
 
 /**
+ * Small pool of decoded previews. Prefetching the next round into it is what
+ * removes the loading gap between songs.
+ */
+const POOL_SIZE = 5;
+const pool = new Map<string, Howl>();
+
+function acquire(url: string): Howl {
+  const cached = pool.get(url);
+  if (cached) {
+    pool.delete(url);
+    pool.set(url, cached);
+    return cached;
+  }
+  const howl = new Howl({ src: [url], format: ["m4a", "mp4", "aac"], html5: false, preload: true });
+  pool.set(url, howl);
+  while (pool.size > POOL_SIZE) {
+    const oldest = pool.keys().next().value;
+    if (oldest === undefined || oldest === url) break;
+    pool.get(oldest)?.unload();
+    pool.delete(oldest);
+  }
+  return howl;
+}
+
+/** Downloads and decodes a preview ahead of time so playback starts instantly. */
+export function preloadPreview(url: string | null | undefined): void {
+  if (url) acquire(url);
+}
+
+/**
  * Preview player with millisecond-accurate clipping: playback starts at the
  * requested offset and is cut by a scheduled timer, so a 800 ms snippet really
  * lasts 800 ms.
@@ -48,15 +78,23 @@ export function usePreviewPlayer(url: string | null) {
 
   useEffect(() => {
     if (!url) return;
-    const howl = new Howl({ src: [url], format: ["m4a", "mp4", "aac"], html5: false, preload: true });
-    howl.once("load", () => setLoaded({ url, status: "ready" }));
-    howl.on("loaderror", () => setLoaded({ url, status: "error" }));
-    howl.on("playerror", () => setLoaded({ url, status: "error" }));
-    howl.on("end", () => setPlaying(null));
+    const howl = acquire(url);
     howlRef.current = howl;
+    const onLoad = () => setLoaded({ url, status: "ready" });
+    const onError = () => setLoaded({ url, status: "error" });
+    const onEnd = () => setPlaying(null);
+    if (howl.state() === "loaded") queueMicrotask(onLoad);
+    howl.on("load", onLoad);
+    howl.on("loaderror", onError);
+    howl.on("playerror", onError);
+    howl.on("end", onEnd);
     return () => {
       clearTimer();
-      howl.unload();
+      howl.off("load", onLoad);
+      howl.off("loaderror", onError);
+      howl.off("playerror", onError);
+      howl.off("end", onEnd);
+      howl.stop();
       howlRef.current = null;
     };
   }, [url]);

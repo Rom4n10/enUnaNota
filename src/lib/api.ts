@@ -1,4 +1,4 @@
-import type { Category, DailyPayload, RoundPayload, Solution } from "./types";
+import type { Category, DailyPayload, RoundPayload, ScoreEntry, Solution } from "./types";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
@@ -36,6 +36,22 @@ export const suggestArtists = (q: string) =>
   request<{ artists: string[] }>(`/api/artist/suggest?q=${encodeURIComponent(q)}`).then(
     (r) => r.artists,
   );
+
+export const getLeaderboard = (mode: string, categoryId: string) =>
+  request<{ week: string; top: ScoreEntry[] }>(
+    `/api/leaderboard?mode=${encodeURIComponent(mode)}&categoryId=${encodeURIComponent(categoryId)}`,
+  );
+
+export const submitScore = (payload: {
+  mode: string;
+  categoryId: string;
+  name: string;
+  score: number;
+}) =>
+  request<{ week: string; rank: number | null; top: ScoreEntry[] }>("/api/leaderboard", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 
 export const answerRound = (roundId: string, optionId: string) =>
   request<{ correct: boolean; solution: Solution }>("/api/answer", {

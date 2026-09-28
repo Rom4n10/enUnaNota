@@ -96,6 +96,9 @@ export async function getArtistTracks(artist: string, limit = 12): Promise<Track
 export async function getCategoryTracks(categoryId: string): Promise<Track[]> {
   const category = getCategory(categoryId);
   if (!category) return [];
-  const lists = await Promise.all(category.artists.map((a) => getArtistTracks(a, 8)));
+  const lists = await Promise.all([
+    ...category.artists.map((a) => getArtistTracks(a, 8)),
+    ...category.terms.map((t) => searchTracks(t, 25)),
+  ]);
   return dedupe(lists.flat());
 }

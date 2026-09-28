@@ -3,6 +3,8 @@ export type Category = {
   name: string;
   emoji: string;
   artists: string[];
+  /** Free-text searches that widen the pool beyond the fixed artist list. */
+  terms: string[];
 };
 
 export const CATEGORIES: Category[] = [
@@ -24,6 +26,7 @@ export const CATEGORIES: Category[] = [
       "Luis Alberto Spinetta",
       "Attaque 77",
     ],
+    terms: ["rock nacional argentino", "clasicos rock argentino", "rock argentino 90"],
   },
   {
     id: "trap-argento",
@@ -43,6 +46,7 @@ export const CATEGORIES: Category[] = [
       "Lit Killah",
       "Khea",
     ],
+    terms: ["trap argentino", "rkt argentino", "urbano argentino hits"],
   },
   {
     id: "reggaeton",
@@ -62,6 +66,7 @@ export const CATEGORIES: Category[] = [
       "Myke Towers",
       "Nicky Jam",
     ],
+    terms: ["reggaeton hits", "reggaeton clasico", "perreo"],
   },
   {
     id: "pop-global",
@@ -81,6 +86,7 @@ export const CATEGORIES: Category[] = [
       "Miley Cyrus",
       "Sabrina Carpenter",
     ],
+    terms: ["pop hits", "top pop songs", "pop 2020s"],
   },
   {
     id: "rock-clasico",
@@ -100,6 +106,7 @@ export const CATEGORIES: Category[] = [
       "Oasis",
       "Radiohead",
     ],
+    terms: ["classic rock hits", "80s rock anthems", "90s alternative rock"],
   },
   {
     id: "hits-2010s",
@@ -119,6 +126,7 @@ export const CATEGORIES: Category[] = [
       "David Guetta",
       "OneRepublic",
     ],
+    terms: ["2010s hits", "throwback 2012 hits", "dance pop 2015"],
   },
   {
     id: "latinos-clasicos",
@@ -138,6 +146,7 @@ export const CATEGORIES: Category[] = [
       "Carlos Vives",
       "Marc Anthony",
     ],
+    terms: ["rock en espanol clasicos", "baladas latinas", "salsa clasica"],
   },
   {
     id: "cuarteto-cumbia",
@@ -157,6 +166,7 @@ export const CATEGORIES: Category[] = [
       "Marama",
       "Rombai",
     ],
+    terms: ["cuarteto cordobes", "cumbia argentina", "cumbia villera"],
   },
 ];
 

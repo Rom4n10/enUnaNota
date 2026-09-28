@@ -24,6 +24,8 @@ export type DailyPayload = RoundPayload & {
   nextPuzzleInMs: number;
 };
 
+export type ScoreEntry = { name: string; score: number; at: number };
+
 export type ChaosType = "none" | "double" | "short";
 
 export type RoomPlayer = { id: string; name: string; score: number; connected: boolean };

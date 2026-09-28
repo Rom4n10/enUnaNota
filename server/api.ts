@@ -9,6 +9,7 @@ import {
   msUntilNextPuzzle,
 } from "./daily.js";
 import { getArtistTracks, getCategoryTracks, searchTracks, type Track } from "./itunes.js";
+import { submitScore, topScores, weekKey } from "./leaderboard.js";
 import {
   createRound,
   getRound,
@@ -111,6 +112,28 @@ api.get("/artist/suggest", async (req, res) => {
   const tracks = await searchTracks(term, 25);
   const artists = [...new Set(tracks.map((t) => t.artist))].slice(0, 8);
   res.json({ artists });
+});
+
+api.get("/leaderboard", (req, res) => {
+  const mode = String(req.query.mode ?? "rush");
+  const categoryId = String(req.query.categoryId ?? "all");
+  res.json({ week: weekKey(), top: topScores(mode, categoryId) });
+});
+
+api.post("/leaderboard", (req, res) => {
+  const { mode, categoryId, name, score } = req.body as {
+    mode?: string;
+    categoryId?: string;
+    name?: string;
+    score?: number;
+  };
+  const points = Number(score);
+  if (!Number.isFinite(points) || points < 0) {
+    res.status(400).json({ error: "invalid_score" });
+    return;
+  }
+  const result = submitScore(mode ?? "rush", categoryId ?? "all", String(name ?? "").trim(), Math.round(points));
+  res.json({ week: weekKey(), ...result });
 });
 
 api.post("/answer", (req, res) => {

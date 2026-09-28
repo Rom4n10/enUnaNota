@@ -8,7 +8,7 @@ import { Waveform } from "@/components/Waveform";
 import { answerRound, getArtistRound, suggestArtists } from "@/lib/api";
 import { awardBadge } from "@/lib/storage";
 import type { RoundPayload, Solution } from "@/lib/types";
-import { usePreviewPlayer } from "@/lib/useAudio";
+import { preloadPreview, usePreviewPlayer } from "@/lib/useAudio";
 
 const TOTAL_ROUNDS = 10;
 const SNIPPET_MS = 1000;
@@ -28,6 +28,7 @@ export default function ArtistPage() {
   const [badge, setBadge] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const seen = useRef<number[]>([]);
+  const prefetched = useRef<Promise<RoundPayload> | null>(null);
 
   const { status, playClip, getAnalyser } = usePreviewPlayer(round?.audioUrl ?? null);
 
@@ -48,17 +49,32 @@ export default function ArtistPage() {
     if (phase === "playing" && status === "ready" && !solution) playClip(SNIPPET_MS);
   }, [phase, status, solution, playClip]);
 
-  const loadRound = useCallback(async (name: string) => {
-    setSolution(null);
-    setPicked(null);
-    const payload = await getArtistRound(name, seen.current);
-    if (payload.trackId) seen.current.push(payload.trackId);
-    setRound(payload);
+  const fetchRound = useCallback((name: string) => {
+    const pending = getArtistRound(name, seen.current);
+    pending
+      .then((payload) => {
+        if (payload.trackId) seen.current.push(payload.trackId);
+        preloadPreview(payload.audioUrl);
+      })
+      .catch(() => {});
+    return pending;
   }, []);
+
+  const loadRound = useCallback(
+    async (name: string) => {
+      setSolution(null);
+      setPicked(null);
+      const payload = await (prefetched.current ?? fetchRound(name));
+      prefetched.current = fetchRound(name);
+      setRound(payload);
+    },
+    [fetchRound],
+  );
 
   async function start(name: string) {
     setError(null);
     seen.current = [];
+    prefetched.current = null;
     setIndex(0);
     setHits(0);
     setBadge(null);

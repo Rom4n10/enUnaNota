@@ -1,5 +1,6 @@
 import type { Server, Socket } from "socket.io";
 import { getCategoryTracks, type Track } from "./itunes.js";
+import { warmPreview } from "./previewCache.js";
 import { createRound, publicRound, shuffle, solutionOf, type Round } from "./rounds.js";
 
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ";
@@ -41,6 +42,11 @@ function newCode(): string {
     code = Array.from({ length: 4 }, () => CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)]).join("");
   } while (rooms.has(code));
   return code;
+}
+
+/** Downloads a handful of previews up front so synced playback never stalls. */
+function warmPool(pool: Track[], count = 14): void {
+  shuffle(pool).slice(0, count).forEach((t) => warmPreview(t.previewUrl));
 }
 
 function clearTimers(room: Room) {
@@ -87,7 +93,10 @@ export function registerRooms(io: Server) {
       return;
     }
 
-    if (room.pool.length < 4) room.pool = await getCategoryTracks(room.categoryId);
+    if (room.pool.length < 4) {
+      room.pool = await getCategoryTracks(room.categoryId);
+      warmPool(room.pool);
+    }
     if (room.pool.length < 4) {
       io.to(room.code).emit("error_msg", { message: "No pudimos cargar canciones de esa categoría." });
       room.status = "lobby";
@@ -179,7 +188,10 @@ export function registerRooms(io: Server) {
       socket.join(code);
       ack?.({ ok: true, code });
       emitState(room);
-      void getCategoryTracks(room.categoryId).then((pool) => (room.pool = pool));
+      void getCategoryTracks(room.categoryId).then((pool) => {
+        room.pool = pool;
+        warmPool(pool);
+      });
     });
 
     socket.on("join_room", ({ code, name }: { code?: string; name?: string }, ack?: (r: unknown) => void) => {
@@ -206,7 +218,10 @@ export function registerRooms(io: Server) {
         room.categoryId = categoryId;
         room.pool = [];
         room.used.clear();
-        void getCategoryTracks(categoryId).then((pool) => (room.pool = pool));
+        void getCategoryTracks(categoryId).then((pool) => {
+          room.pool = pool;
+          warmPool(pool);
+        });
       }
       if (totalRounds) room.totalRounds = Math.max(3, Math.min(20, totalRounds));
       if (typeof chaosEnabled === "boolean") room.chaosEnabled = chaosEnabled;

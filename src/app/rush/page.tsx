@@ -5,10 +5,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Shell } from "@/components/Shell";
 import { OptionGrid } from "@/components/OptionGrid";
 import { Waveform } from "@/components/Waveform";
-import { answerRound, getCategories, getRound } from "@/lib/api";
+import { answerRound, getCategories, getLeaderboard, getRound, submitScore } from "@/lib/api";
 import { updateProfile } from "@/lib/storage";
-import type { Category, RoundPayload } from "@/lib/types";
-import { usePreviewPlayer } from "@/lib/useAudio";
+import type { Category, RoundPayload, ScoreEntry } from "@/lib/types";
+import { preloadPreview, usePreviewPlayer } from "@/lib/useAudio";
 import { useProfile } from "@/lib/useProfile";
 
 const START_MS = 45_000;
@@ -18,6 +18,23 @@ const FEVER_WINDOW_MS = 2_000;
 const FEVER_DURATION_MS = 12_000;
 
 type Phase = "setup" | "playing" | "over";
+
+function Leaderboard({ entries }: { entries: ScoreEntry[] }) {
+  if (!entries.length) return null;
+  return (
+    <div className="space-y-1 text-left">
+      <p className="text-xs uppercase tracking-widest text-white/40">Ranking de la semana</p>
+      {entries.slice(0, 5).map((entry, i) => (
+        <div key={`${entry.name}-${entry.at}`} className="flex justify-between text-sm">
+          <span className="text-white/70">
+            {i + 1}. {entry.name}
+          </span>
+          <span className="tabular-nums font-semibold">{entry.score}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function RushPage() {
   const [categories, setCategories] = useState<Category[]>([]);
@@ -35,25 +52,52 @@ export default function RushPage() {
   const roundStartedAt = useRef(0);
   const deadline = useRef(0);
   const feverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prefetched = useRef<Promise<RoundPayload> | null>(null);
+  const [top, setTop] = useState<ScoreEntry[]>([]);
+  const [rank, setRank] = useState<number | null>(null);
+  const [submitted, setSubmitted] = useState(false);
 
   const { status, playClip, stop, getAnalyser } = usePreviewPlayer(round?.audioUrl ?? null);
-  const best = useProfile().rushBest;
+  const profile = useProfile();
+  const best = profile.rushBest;
+  const [typedName, setTypedName] = useState<string | null>(null);
+  const name = typedName ?? profile.nickname;
 
   useEffect(() => {
     getCategories().then(setCategories).catch(() => setCategories([]));
   }, []);
 
+  useEffect(() => {
+    if (phase === "playing") return;
+    getLeaderboard("rush", categoryId)
+      .then((r) => setTop(r.top))
+      .catch(() => setTop([]));
+  }, [categoryId, phase]);
+
+  /** Requests a round and warms its audio so the next song starts with no gap. */
+  const fetchRound = useCallback(() => {
+    const pending = getRound(categoryId, seen.current.slice(-40));
+    pending
+      .then((payload) => {
+        if (payload.trackId) seen.current.push(payload.trackId);
+        preloadPreview(payload.audioUrl);
+      })
+      .catch(() => {});
+    return pending;
+  }, [categoryId]);
+
   const nextRound = useCallback(async () => {
     try {
-      const payload = await getRound(categoryId, seen.current.slice(-40));
-      if (payload.trackId) seen.current.push(payload.trackId);
+      const payload = await (prefetched.current ?? fetchRound());
+      prefetched.current = fetchRound();
       setDiscarded([]);
       setRound(payload);
       roundStartedAt.current = Date.now();
     } catch {
+      prefetched.current = null;
       setFlash({ text: "Error cargando el tema", good: false });
     }
-  }, [categoryId]);
+  }, [fetchRound]);
 
   useEffect(() => {
     if (phase !== "playing" || status !== "ready") return;
@@ -77,8 +121,11 @@ export default function RushPage() {
 
   async function start() {
     seen.current = [];
+    prefetched.current = null;
     setScore(0);
     setSolved(0);
+    setRank(null);
+    setSubmitted(false);
     setCombo(0);
     setFever(false);
     setTimeLeft(START_MS);
@@ -104,7 +151,7 @@ export default function RushPage() {
       setScore((s) => s + points);
       setSolved((s) => s + 1);
       deadline.current += BONUS_MS;
-      setFlash({ text: `+${points} · +4s`, good: true });
+      setFlash({ text: `+${points} · +4s · ${res.solution.title}`, good: true });
       stop();
       await nextRound();
     } else {
@@ -149,6 +196,7 @@ export default function RushPage() {
           <button type="button" className="btn-primary w-full" onClick={start}>
             Arrancar
           </button>
+          <Leaderboard entries={top} />
         </section>
       </Shell>
     );
@@ -161,6 +209,45 @@ export default function RushPage() {
           <p className="text-xs uppercase tracking-widest text-white/40">Se acabó el tiempo</p>
           <p className="text-5xl font-black text-fuchsia-300">{score}</p>
           <p className="text-white/60">{solved} canciones adivinadas · récord {best}</p>
+          {submitted ? (
+            <p className="text-sm text-lime-300">
+              {rank ? `Entraste #${rank} en el ranking semanal` : "Esta vez no entraste al top 50"}
+            </p>
+          ) : (
+            <div className="flex gap-2">
+              <input
+                value={name}
+                onChange={(e) => setTypedName(e.target.value)}
+                placeholder="Tu apodo"
+                maxLength={16}
+                className="min-w-0 flex-1 rounded-2xl border border-white/12 bg-white/5 px-4 py-3 outline-none placeholder:text-white/30 focus:border-fuchsia-400/60"
+              />
+              <button
+                type="button"
+                className="btn-ghost"
+                disabled={!name.trim()}
+                onClick={async () => {
+                  updateProfile({ nickname: name.trim() });
+                  try {
+                    const r = await submitScore({
+                      mode: "rush",
+                      categoryId,
+                      name: name.trim(),
+                      score,
+                    });
+                    setRank(r.rank);
+                    setTop(r.top);
+                  } catch {
+                    setRank(null);
+                  }
+                  setSubmitted(true);
+                }}
+              >
+                Subir
+              </button>
+            </div>
+          )}
+          <Leaderboard entries={top} />
           <button type="button" className="btn-primary w-full" onClick={start}>
             Revancha
           </button>
