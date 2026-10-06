@@ -14,6 +14,7 @@ import { accentStyle, modeOf } from "@/lib/modes";
 import { getCategories, getImpostorRound, guessImpostor } from "@/lib/api";
 import type { Category, ImpostorResult, ImpostorRound } from "@/lib/types";
 import { preloadPreview, usePreviewPlayer } from "@/lib/useAudio";
+import { useGameLog } from "@/lib/useGameLog";
 
 const CLIP_MS = 1_500;
 const GAP_MS = 400;
@@ -32,6 +33,7 @@ export default function ImpostorPage() {
   const [result, setResult] = useState<ImpostorResult | null>(null);
   const [index, setIndex] = useState(0);
   const [score, setScore] = useState(0);
+  useGameLog(phase === "over", { mode: "impostor", categoryId, score });
   const chain = useRef<ReturnType<typeof setTimeout>[]>([]);
   const handledToken = useRef(0);
 

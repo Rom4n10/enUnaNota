@@ -110,3 +110,9 @@ export const answerRound = (roundId: string, optionId: string) =>
     method: "POST",
     body: JSON.stringify({ roundId, optionId }),
   });
+
+export const logGame = (payload: { mode: string; categoryId?: string; score?: number }) =>
+  request<{ ok: boolean }>("/api/games", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });

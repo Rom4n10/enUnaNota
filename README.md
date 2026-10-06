@@ -34,3 +34,9 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Base de datos (Supabase, opcional)
+
+Rankings semanales y registro de partidas se guardan en Supabase si están definidas
+`SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` (solo en el servidor). Sin ellas, todo queda en memoria.
+El esquema está en `supabase/schema.sql` (correrlo una vez en el SQL Editor). Métricas: `GET /api/stats`.

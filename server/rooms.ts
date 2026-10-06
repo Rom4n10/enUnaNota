@@ -1,4 +1,5 @@
 import type { Server, Socket } from "socket.io";
+import { recordGame } from "./games.js";
 import { getCategoryTracks, type Track } from "./itunes.js";
 import { warmPreview } from "./previewCache.js";
 import { createRound, publicRound, shuffle, solutionOf, type Round } from "./rounds.js";
@@ -142,6 +143,7 @@ export function registerRooms(io: Server) {
       room.round = null;
       emitState(room);
       io.to(room.code).emit("game_over", { leaderboard: scoreboard(room) });
+      recordGame({ mode: `sala-${room.mode}`, categoryId: room.categoryId, players: room.players.size });
       return;
     }
 

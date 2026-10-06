@@ -13,6 +13,7 @@ import { accentStyle, modeOf } from "@/lib/modes";
 import { getChainRound, guessChain } from "@/lib/api";
 import type { ChainRound, Solution } from "@/lib/types";
 import { preloadPreview, useAutoplay, usePreviewPlayer } from "@/lib/useAudio";
+import { useGameLog } from "@/lib/useGameLog";
 
 const CLIP_MS = 6_000;
 const TOTAL_MS = 120_000;
@@ -30,6 +31,7 @@ export default function ChainPage() {
   const [solution, setSolution] = useState<Solution | null>(null);
   const [endReason, setEndReason] = useState("");
   const [msLeft, setMsLeft] = useState(TOTAL_MS);
+  useGameLog(phase === "over", { mode: "cadena", categoryId: seed, score: links.length });
   const deadline = useRef(0);
   const used = useRef<number[]>([]);
 

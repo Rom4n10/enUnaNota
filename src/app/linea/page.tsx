@@ -15,6 +15,7 @@ import { accentStyle, modeOf } from "@/lib/modes";
 import { getCategories, getTimelineRound, guessTimeline } from "@/lib/api";
 import type { Category, RoundPayload, Solution } from "@/lib/types";
 import { preloadPreview, useAutoplay, usePreviewPlayer } from "@/lib/useAudio";
+import { useGameLog } from "@/lib/useGameLog";
 
 const CLIP_MS = 2_500;
 const LIVES = 3;
@@ -48,6 +49,7 @@ export default function TimelinePage() {
   const [lastOk, setLastOk] = useState<boolean | null>(null);
   const [score, setScore] = useState(0);
   const [lives, setLives] = useState(LIVES);
+  useGameLog(phase === "over", { mode: "linea", categoryId, score });
   const seen = useRef<number[]>([]);
 
   const { status, playClip, stop, getAnalyser } = usePreviewPlayer(round?.audioUrl ?? null);

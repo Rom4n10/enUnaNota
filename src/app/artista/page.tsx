@@ -17,6 +17,7 @@ import { answerRound, getArtistRound, suggestArtists } from "@/lib/api";
 import { awardBadge } from "@/lib/storage";
 import type { RoundPayload, Solution } from "@/lib/types";
 import { preloadPreview, useAutoplay, usePreviewPlayer } from "@/lib/useAudio";
+import { useGameLog } from "@/lib/useGameLog";
 
 const TOTAL_ROUNDS = 10;
 const SNIPPET_MS = 1000;
@@ -35,6 +36,7 @@ export default function ArtistPage() {
   const [picked, setPicked] = useState<string | null>(null);
   const [badge, setBadge] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  useGameLog(phase === "over", { mode: "artista", categoryId: artist, score: hits });
   const seen = useRef<number[]>([]);
   const prefetched = useRef<Promise<RoundPayload> | null>(null);
 
