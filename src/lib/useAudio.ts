@@ -65,8 +65,66 @@ function acquire(url: string): Howl {
 
 /** Resumes the shared AudioContext; must run inside a user gesture on iOS Safari. */
 export function unlockAudio(): void {
+  routeAudioToMediaChannel();
   const ctx = Howler.ctx;
   if (ctx && ctx.state !== "running") void ctx.resume().catch(() => {});
+}
+
+type NavigatorWithAudioSession = Navigator & { audioSession?: { type: string } };
+
+let silentLoop: HTMLAudioElement | null = null;
+
+function isIOS(): boolean {
+  return /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Mac/.test(navigator.userAgent));
+}
+
+function silentWavUrl(): string {
+  const samples = 4410;
+  const view = new DataView(new ArrayBuffer(44 + samples * 2));
+  const ascii = (offset: number, text: string) =>
+    [...text].forEach((c, i) => view.setUint8(offset + i, c.charCodeAt(0)));
+  ascii(0, "RIFF");
+  view.setUint32(4, 36 + samples * 2, true);
+  ascii(8, "WAVEfmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, 44_100, true);
+  view.setUint32(28, 88_200, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  ascii(36, "data");
+  view.setUint32(40, samples * 2, true);
+  return URL.createObjectURL(new Blob([view.buffer], { type: "audio/wav" }));
+}
+
+/**
+ * iOS mutes Web Audio when the ring/silent switch is on silent. Declaring a "playback" audio
+ * session (Safari 16.4+) — or, on older iOS, keeping a silent media element playing — moves
+ * the page to the media channel so the game is audible like any video or music app.
+ */
+function routeAudioToMediaChannel(): void {
+  if (typeof window === "undefined" || !isIOS()) return;
+  const nav = navigator as NavigatorWithAudioSession;
+  if (nav.audioSession) {
+    nav.audioSession.type = "playback";
+    return;
+  }
+  if (!silentLoop) {
+    silentLoop = new Audio(silentWavUrl());
+    silentLoop.loop = true;
+    silentLoop.setAttribute("playsinline", "");
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) silentLoop?.pause();
+    });
+  }
+  if (silentLoop.paused) void silentLoop.play().catch(() => {});
+}
+
+if (typeof window !== "undefined") {
+  for (const type of ["touchend", "pointerdown", "click", "keydown"]) {
+    window.addEventListener(type, unlockAudio, { capture: true, passive: true });
+  }
 }
 
 export function audioLocked(): boolean {
