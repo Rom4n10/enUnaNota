@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { AudioGuard } from "@/components/AudioGuard";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -14,7 +15,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="es" className="h-full antialiased">
-      <body className="min-h-full">{children}</body>
+      <body className="min-h-full">
+        {children}
+        <AudioGuard />
+      </body>
     </html>
   );
 }

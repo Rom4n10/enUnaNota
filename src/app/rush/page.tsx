@@ -8,7 +8,7 @@ import { Waveform } from "@/components/Waveform";
 import { answerRound, getCategories, getLeaderboard, getRound, submitScore } from "@/lib/api";
 import { updateProfile } from "@/lib/storage";
 import type { Category, RoundPayload, ScoreEntry } from "@/lib/types";
-import { preloadPreview, usePreviewPlayer } from "@/lib/useAudio";
+import { preloadPreview, useAutoplay, usePreviewPlayer } from "@/lib/useAudio";
 import { useProfile } from "@/lib/useProfile";
 
 const START_MS = 45_000;
@@ -99,15 +99,28 @@ export default function RushPage() {
     }
   }, [fetchRound]);
 
+  useAutoplay(status, round?.audioUrl ?? null, phase === "playing", () => playClip(null));
+
+  // The clock only runs while there is something to hear.
+  const audioLive = useRef(false);
   useEffect(() => {
-    if (phase !== "playing" || status !== "ready") return;
-    playClip(null);
-  }, [phase, status, playClip]);
+    audioLive.current = status === "playing" || status === "ready";
+  }, [status]);
+
+  useEffect(() => {
+    if (phase !== "playing" || status !== "error") return;
+    const id = setTimeout(() => void nextRound(), 300);
+    return () => clearTimeout(id);
+  }, [phase, status, nextRound]);
 
   useEffect(() => {
     if (phase !== "playing") return;
+    let last = Date.now();
     const id = setInterval(() => {
-      const left = deadline.current - Date.now();
+      const now = Date.now();
+      if (!audioLive.current) deadline.current += now - last;
+      last = now;
+      const left = deadline.current - now;
       setTimeLeft(Math.max(0, left));
       if (left <= 0) {
         clearInterval(id);
@@ -282,6 +295,11 @@ export default function RushPage() {
         <div className="rounded-2xl bg-black/30 p-2">
           <Waveform active={status === "playing"} getAnalyser={getAnalyser} color={fever ? "#fbbf24" : "#c084fc"} />
         </div>
+        {(status === "loading" || status === "error") && (
+          <p className="text-center text-xs uppercase tracking-widest text-white/40">
+            Cargando audio · reloj en pausa
+          </p>
+        )}
 
         <AnimatePresence>
           {flash && (

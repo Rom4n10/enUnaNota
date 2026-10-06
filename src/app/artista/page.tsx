@@ -8,7 +8,7 @@ import { Waveform } from "@/components/Waveform";
 import { answerRound, getArtistRound, suggestArtists } from "@/lib/api";
 import { awardBadge } from "@/lib/storage";
 import type { RoundPayload, Solution } from "@/lib/types";
-import { preloadPreview, usePreviewPlayer } from "@/lib/useAudio";
+import { preloadPreview, useAutoplay, usePreviewPlayer } from "@/lib/useAudio";
 
 const TOTAL_ROUNDS = 10;
 const SNIPPET_MS = 1000;
@@ -45,9 +45,9 @@ export default function ArtistPage() {
     [query, suggestions],
   );
 
-  useEffect(() => {
-    if (phase === "playing" && status === "ready" && !solution) playClip(SNIPPET_MS);
-  }, [phase, status, solution, playClip]);
+  useAutoplay(status, round?.audioUrl ?? null, phase === "playing" && !solution, () =>
+    playClip(SNIPPET_MS),
+  );
 
   const fetchRound = useCallback((name: string) => {
     const pending = getArtistRound(name, seen.current);

@@ -6,7 +6,7 @@ import { Shell } from "@/components/Shell";
 import { Waveform } from "@/components/Waveform";
 import { getCategories, getTimelineRound, guessTimeline } from "@/lib/api";
 import type { Category, RoundPayload, Solution } from "@/lib/types";
-import { preloadPreview, usePreviewPlayer } from "@/lib/useAudio";
+import { preloadPreview, useAutoplay, usePreviewPlayer } from "@/lib/useAudio";
 
 const CLIP_MS = 2_500;
 const LIVES = 3;
@@ -55,10 +55,9 @@ export default function TimelinePage() {
     return payload;
   }, [categoryId]);
 
-  useEffect(() => {
-    if (phase !== "playing" || status !== "ready" || solution) return;
-    playClip(CLIP_MS);
-  }, [phase, status, solution, playClip]);
+  useAutoplay(status, round?.audioUrl ?? null, phase === "playing" && !solution, () =>
+    playClip(CLIP_MS),
+  );
 
   async function start() {
     setPhase("loading");

@@ -430,6 +430,16 @@ export default function RoomPage() {
           <div className="rounded-2xl bg-black/30 p-2">
             <Waveform active={status === "playing"} getAnalyser={getAnalyser} color="#38bdf8" />
           </div>
+          {status === "loading" && (!isAuction || wonAuction) && (
+            <p className="text-center text-xs uppercase tracking-widest text-white/40">
+              Cargando audio… te sumás desde donde va el tema
+            </p>
+          )}
+          {status === "error" && (
+            <p className="text-center text-xs text-rose-300">
+              No pudimos cargar este tema en tu dispositivo · revisá la conexión
+            </p>
+          )}
 
           {isAuction ? (
             wonAuction ? (

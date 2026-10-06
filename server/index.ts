@@ -15,6 +15,9 @@ async function main() {
 
   const server = express();
   server.use(express.json());
+  server.get("/healthz", (_req, res) => {
+    res.json({ ok: true, uptime: Math.round(process.uptime()) });
+  });
   server.use("/api", api);
   server.all(/.*/, (req, res) => {
     handle(req, res);

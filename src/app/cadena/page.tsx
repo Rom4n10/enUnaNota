@@ -7,7 +7,7 @@ import { OptionGrid } from "@/components/OptionGrid";
 import { Waveform } from "@/components/Waveform";
 import { getChainRound, guessChain } from "@/lib/api";
 import type { ChainRound, Solution } from "@/lib/types";
-import { preloadPreview, usePreviewPlayer } from "@/lib/useAudio";
+import { preloadPreview, useAutoplay, usePreviewPlayer } from "@/lib/useAudio";
 
 const CLIP_MS = 6_000;
 const TOTAL_MS = 120_000;
@@ -29,11 +29,20 @@ export default function ChainPage() {
   const used = useRef<number[]>([]);
 
   const { status, playClip, stop, getAnalyser } = usePreviewPlayer(round?.audioUrl ?? null);
+  const audioLive = useRef(false);
+
+  useEffect(() => {
+    audioLive.current = status === "playing" || status === "ready";
+  }, [status]);
 
   useEffect(() => {
     if (phase !== "playing") return;
+    let last = Date.now();
     const id = setInterval(() => {
-      const left = deadline.current - Date.now();
+      const now = Date.now();
+      if (!audioLive.current) deadline.current += now - last;
+      last = now;
+      const left = deadline.current - now;
       setMsLeft(Math.max(0, left));
       if (left <= 0) {
         setEndReason("Se acabó el tiempo");
@@ -43,10 +52,9 @@ export default function ChainPage() {
     return () => clearInterval(id);
   }, [phase]);
 
-  useEffect(() => {
-    if (phase !== "playing" || status !== "ready" || solution) return;
-    playClip(CLIP_MS);
-  }, [phase, status, solution, playClip]);
+  useAutoplay(status, round?.audioUrl ?? null, phase === "playing" && !solution, () =>
+    playClip(CLIP_MS),
+  );
 
   const load = useCallback(async (artist: string) => {
     const payload = await getChainRound(artist, used.current.slice(-40));
@@ -58,16 +66,23 @@ export default function ChainPage() {
     setSolution(null);
   }, []);
 
+  // A preview that never loads gets swapped for another collab of the same artist.
+  useEffect(() => {
+    if (phase !== "playing" || status !== "error" || solution || !from) return;
+    const id = setTimeout(() => void load(from).catch(() => {}), 300);
+    return () => clearTimeout(id);
+  }, [phase, status, solution, from, load]);
+
   async function start() {
     const artist = seed.trim();
     if (!artist) return;
     setPhase("loading");
     used.current = [];
     setLinks([artist]);
-    deadline.current = Date.now() + TOTAL_MS;
     setMsLeft(TOTAL_MS);
     try {
       await load(artist);
+      deadline.current = Date.now() + TOTAL_MS;
       setPhase("playing");
     } catch {
       setEndReason(`No encontramos colaboraciones de ${artist}`);

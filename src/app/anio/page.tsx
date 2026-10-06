@@ -14,7 +14,7 @@ import {
 } from "@/lib/api";
 import { updateProfile } from "@/lib/storage";
 import type { Category, RoundPayload, ScoreEntry, Solution } from "@/lib/types";
-import { preloadPreview, usePreviewPlayer } from "@/lib/useAudio";
+import { preloadPreview, useAutoplay, usePreviewPlayer } from "@/lib/useAudio";
 import { useProfile } from "@/lib/useProfile";
 
 const TOTAL_ROUNDS = 10;
@@ -72,10 +72,9 @@ export default function YearPage() {
     setRound(payload);
   }, [fetchRound]);
 
-  useEffect(() => {
-    if (phase !== "playing" || status !== "ready" || solution) return;
-    playClip(CLIP_MS);
-  }, [phase, status, playClip, solution]);
+  useAutoplay(status, round?.audioUrl ?? null, phase === "playing" && !solution, () =>
+    playClip(CLIP_MS),
+  );
 
   async function start() {
     seen.current = [];
