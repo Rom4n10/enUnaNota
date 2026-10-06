@@ -15,7 +15,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="es" className="h-full antialiased">
-      <body className="min-h-full">
+      <body className="min-h-full" suppressHydrationWarning>
         {children}
         <AudioGuard />
       </body>
