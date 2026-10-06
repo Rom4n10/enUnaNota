@@ -340,9 +340,46 @@ export function registerRooms(io: Server) {
   io.on("connection", (socket: Socket) => {
     let joined: { code: string } | null = null;
 
-    const findRoom = () => (joined ? rooms.get(joined.code) : undefined);
+    const findRoom = () => {
+      const room = joined ? rooms.get(joined.code) : undefined;
+      return room?.players.has(socket.id) ? room : undefined;
+    };
+
+    /** A socket belongs to at most one room: leaving cleans up before creating/joining another. */
+    const leaveRoom = () => {
+      const room = findRoom();
+      if (joined) socket.leave(joined.code);
+      joined = null;
+      if (!room) return;
+      const round = room.round;
+      if (round?.buzz?.playerId === socket.id) releaseBuzz(room, socket.id, "timeout");
+      room.players.delete(socket.id);
+      room.rematch.delete(socket.id);
+      room.bids.delete(socket.id);
+      if (room.players.size === 0) {
+        clearTimers(room);
+        rooms.delete(room.code);
+        return;
+      }
+      if (room.hostId === socket.id) room.hostId = [...room.players.keys()][0];
+      if (room.status === "playing" && round) {
+        const winnerLeft = round.mode === "auction" && round.auctionWinnerId === socket.id;
+        const allAnswered =
+          round.mode === "classic" && [...room.players.values()].every((p) => !p.connected || p.answer);
+        if (winnerLeft || allAnswered) endRound(room);
+      }
+      if (room.status === "finished") {
+        const ready = [...room.players.values()].filter((p) => p.connected);
+        if (ready.length > 0 && ready.every((p) => room.rematch.has(p.id))) {
+          startGame(room);
+          return;
+        }
+      }
+      emitState(room);
+    };
 
     socket.on("create_room", async ({ name, categoryId }: { name?: string; categoryId?: string }, ack?: (r: unknown) => void) => {
+      leaveRoom();
       const code = newCode();
       const room: Room = {
         code,
@@ -382,6 +419,12 @@ export function registerRooms(io: Server) {
     socket.on("join_room", ({ code, name }: { code?: string; name?: string }, ack?: (r: unknown) => void) => {
       const room = rooms.get((code ?? "").toUpperCase());
       if (!room) return ack?.({ ok: false, error: "Sala inexistente" });
+      if (findRoom() === room) {
+        ack?.({ ok: true, code: room.code });
+        emitState(room);
+        return;
+      }
+      leaveRoom();
       if (room.players.size >= MAX_PLAYERS) return ack?.({ ok: false, error: "Sala llena" });
       room.players.set(socket.id, {
         id: socket.id,
@@ -418,6 +461,42 @@ export function registerRooms(io: Server) {
       const room = findRoom();
       if (!room || room.hostId !== socket.id || room.status === "playing") return;
       startGame(room);
+    });
+
+    socket.on("room_sync", ({ code }: { code?: string }) => {
+      const room = findRoom();
+      if (room && room.code === (code ?? "").toUpperCase()) socket.emit("room_state", roomState(room));
+    });
+
+    socket.on("leave_room", (_payload, ack?: (r: unknown) => void) => {
+      leaveRoom();
+      ack?.({ ok: true });
+    });
+
+    socket.on("back_to_lobby", () => {
+      const room = findRoom();
+      if (!room || room.hostId !== socket.id || room.status !== "finished") return;
+      clearTimers(room);
+      room.status = "lobby";
+      room.round = null;
+      room.roundIndex = 0;
+      room.bids.clear();
+      room.rematch.clear();
+      room.players.forEach((p) => {
+        p.score = 0;
+        p.answer = null;
+      });
+      emitState(room);
+    });
+
+    socket.on("close_room", () => {
+      const room = findRoom();
+      if (!room || room.hostId !== socket.id) return;
+      clearTimers(room);
+      rooms.delete(room.code);
+      io.to(room.code).emit("room_closed", { code: room.code });
+      io.in(room.code).socketsLeave(room.code);
+      joined = null;
     });
 
     socket.on("rematch", () => {
@@ -534,21 +613,7 @@ export function registerRooms(io: Server) {
       });
     });
 
-    socket.on("disconnect", () => {
-      const room = findRoom();
-      if (!room) return;
-      if (room.round?.buzz?.playerId === socket.id) releaseBuzz(room, socket.id, "timeout");
-      room.players.delete(socket.id);
-      room.rematch.delete(socket.id);
-      room.bids.delete(socket.id);
-      if (room.players.size === 0) {
-        clearTimers(room);
-        rooms.delete(room.code);
-        return;
-      }
-      if (room.hostId === socket.id) room.hostId = [...room.players.keys()][0];
-      emitState(room);
-    });
+    socket.on("disconnect", leaveRoom);
   });
 }
 

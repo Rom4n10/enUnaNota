@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Shell } from "@/components/Shell";
 import { OptionGrid } from "@/components/OptionGrid";
@@ -39,7 +39,11 @@ const INVITE_MODE: Record<RoomMode, string> = {
   auction: "💰 Modo Subasta: apostá en cuántos segundos la sacás",
 };
 
+/** Deferred so React's dev double-mount doesn't kick the player out of the room. */
+let pendingLeave: ReturnType<typeof setTimeout> | null = null;
+
 export default function RoomPage() {
+  const router = useRouter();
   const params = useParams<{ code: string }>();
   const code = (params.code ?? "").toUpperCase();
 
@@ -47,6 +51,7 @@ export default function RoomPage() {
   const [typedNickname, setTypedNickname] = useState<string | null>(null);
   const nickname = typedNickname ?? stored;
   const [manuallyJoined, setManuallyJoined] = useState(false);
+  const [closed, setClosed] = useState(false);
   const [state, setState] = useState<RoomState | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [round, setRound] = useState<RoundStart | null>(null);
@@ -78,8 +83,25 @@ export default function RoomPage() {
   useEffect(() => {
     const socket = getSocket();
     syncClock();
+    if (pendingLeave) clearTimeout(pendingLeave);
+    pendingLeave = null;
 
-    const onState = (s: RoomState) => setState(s);
+    const onState = (s: RoomState) => {
+      if (s.code !== code) return;
+      setState(s);
+      if (s.status !== "lobby") return;
+      setResult(null);
+      setRound(null);
+      setAuction(null);
+      setAuctionResult(null);
+      setBuzz(null);
+      setPlayback(null);
+    };
+    const onClosed = ({ code: closedCode }: { code: string }) => {
+      if (closedCode !== code) return;
+      stop();
+      setClosed(true);
+    };
     const onRoundStart = (payload: RoundStart) => {
       setRound(payload);
       setResult(null);
@@ -143,6 +165,8 @@ export default function RoomPage() {
 
     socket.on("connect", onConnect);
     socket.on("room_state", onState);
+    socket.on("room_closed", onClosed);
+    socket.emit("room_sync", { code });
     socket.on("round_start", onRoundStart);
     socket.on("round_end", onRoundEnd);
     socket.on("player_answered", onAnswered);
@@ -156,6 +180,7 @@ export default function RoomPage() {
     return () => {
       socket.off("connect", onConnect);
       socket.off("room_state", onState);
+      socket.off("room_closed", onClosed);
       socket.off("round_start", onRoundStart);
       socket.off("round_end", onRoundEnd);
       socket.off("player_answered", onAnswered);
@@ -168,8 +193,9 @@ export default function RoomPage() {
       socket.off("error_msg", onError);
       timers.forEach(clearTimeout);
       timers.clear();
+      pendingLeave = setTimeout(() => getSocket().emit("leave_room"), 0);
     };
-  }, [stop]);
+  }, [stop, code]);
 
   // Start (or resume) playback exactly at the timestamp the server scheduled.
   useEffect(() => {
@@ -219,6 +245,18 @@ export default function RoomPage() {
     );
   }
 
+  function leave() {
+    stop();
+    getSocket().emit("leave_room");
+    router.push("/sala");
+  }
+
+  function closeRoom() {
+    if (!window.confirm("¿Cerrar la sala para todos?")) return;
+    getSocket().emit("close_room");
+    router.push("/sala");
+  }
+
   function pick(optionId: string) {
     if (picked) return;
     setPicked(optionId);
@@ -261,6 +299,20 @@ export default function RoomPage() {
   const rematchVotes = state?.rematchVotes ?? [];
   const votedRematch = Boolean(selfId && rematchVotes.includes(selfId));
 
+  if (closed) {
+    return (
+      <Shell>
+        <section className="card space-y-4 p-6 text-center">
+          <p className="text-4xl">🚪</p>
+          <p className="text-lg font-bold">El anfitrión cerró la sala</p>
+          <button type="button" className="btn-primary w-full" onClick={() => router.push("/sala")}>
+            Crear o unirme a otra sala
+          </button>
+        </section>
+      </Shell>
+    );
+  }
+
   if (!joined) {
     return (
       <Shell>
@@ -291,9 +343,14 @@ export default function RoomPage() {
           <p className="text-xs uppercase tracking-widest text-white/40">Código</p>
           <p className="text-3xl font-black tracking-[0.3em]">{code}</p>
         </div>
-        <button type="button" className="btn-ghost" onClick={shareLink}>
-          {copied ? "¡Copiado!" : "Compartir link"}
-        </button>
+        <div className="flex gap-2">
+          <button type="button" className="btn-ghost" onClick={shareLink}>
+            {copied ? "¡Copiado!" : "Compartir link"}
+          </button>
+          <button type="button" className="btn-ghost text-rose-200" onClick={leave}>
+            Salir
+          </button>
+        </div>
       </section>
 
       {state?.status === "lobby" && (
@@ -366,6 +423,13 @@ export default function RoomPage() {
                 onClick={() => getSocket().emit("start_game")}
               >
                 Arrancar {state.totalRounds} rondas
+              </button>
+              <button
+                type="button"
+                className="w-full text-center text-sm text-rose-300/80 hover:text-rose-200"
+                onClick={closeRoom}
+              >
+                Cerrar sala
               </button>
             </>
           )}
@@ -616,13 +680,30 @@ export default function RoomPage() {
                   : ""}
               </p>
               {isHost && (
-                <button
-                  type="button"
-                  className="btn-ghost w-full"
-                  onClick={() => getSocket().emit("start_game")}
-                >
-                  Arrancar ya (anfitrión)
-                </button>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <button
+                    type="button"
+                    className="btn-ghost w-full"
+                    onClick={() => getSocket().emit("start_game")}
+                  >
+                    Arrancar ya
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-ghost w-full"
+                    onClick={() => getSocket().emit("back_to_lobby")}
+                  >
+                    Cambiar modo
+                  </button>
+                  <button type="button" className="btn-ghost w-full text-rose-200" onClick={closeRoom}>
+                    Cerrar sala
+                  </button>
+                </div>
+              )}
+              {!isHost && (
+                <p className="text-center text-xs text-white/45">
+                  El anfitrión 👑 puede cambiar el modo o cerrar la sala
+                </p>
               )}
             </div>
           )}
