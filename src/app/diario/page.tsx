@@ -6,6 +6,7 @@ import { Shell } from "@/components/Shell";
 import { Waveform } from "@/components/Waveform";
 import { getDaily, guessDaily } from "@/lib/api";
 import {
+  buildDailyShareText,
   buildShareGrid,
   getDailyResult,
   getProfile,
@@ -97,10 +98,12 @@ export default function DailyPage() {
 
   async function share() {
     if (!daily) return;
-    const text = `${buildShareGrid(
+    const text = buildDailyShareText(
       { date: daily.date, attempts, won, finished: true },
-      daily.maxAttempts,
-    )}\n${window.location.origin}`;
+      daily.steps,
+      streak,
+      `${window.location.origin}/diario`,
+    );
     if ((await shareText(text)) === "failed") return;
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -247,8 +250,7 @@ export default function DailyPage() {
             </div>
           )}
           <pre className="whitespace-pre-wrap text-xl tracking-[0.3em]">
-            {buildShareGrid({ date: daily!.date, attempts, won, finished: true }, daily!.maxAttempts)
-              .split("\n")[1]}
+            {buildShareGrid({ date: daily!.date, attempts, won, finished: true }, daily!.maxAttempts)}
           </pre>
           <button type="button" className="btn-primary w-full" onClick={share}>
             {copied ? "¡Copiado!" : "Compartir resultado"}

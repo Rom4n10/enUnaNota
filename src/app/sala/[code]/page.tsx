@@ -18,6 +18,7 @@ import type {
   BuzzResume,
   Category,
   Reaction,
+  RoomMode,
   RoomState,
   RoundEnd,
   RoundStart,
@@ -31,6 +32,12 @@ const CHAOS_LABEL: Record<string, string> = {
 };
 
 const REACTIONS = ["🔥", "😂", "😱", "👏", "🫠"];
+
+const INVITE_MODE: Record<RoomMode, string> = {
+  classic: "⚡ Modo Clásico: gana el más rápido",
+  buzzer: "🔔 Modo Buzzer: el primero que aprieta responde",
+  auction: "💰 Modo Subasta: apostá en cuántos segundos la sacás",
+};
 
 export default function RoomPage() {
   const params = useParams<{ code: string }>();
@@ -230,7 +237,14 @@ export default function RoomPage() {
 
   async function shareLink() {
     const url = `${window.location.origin}/sala/${code}`;
-    const text = `¡Sumate a mi sala de En Una Nota! Código ${code}\n${url}`;
+    const category = categories.find((c) => c.id === state?.categoryId);
+    const mode = INVITE_MODE[state?.mode ?? "classic"];
+    const text = [
+      "🎵 ¡Te desafío en En Una Nota!",
+      category ? `${mode} · ${category.emoji} ${category.name}` : mode,
+      `Entrá con el código *${code}* y demostrá quién sabe más de música 👇`,
+      url,
+    ].join("\n");
     if ((await shareText(text)) === "failed") return;
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);

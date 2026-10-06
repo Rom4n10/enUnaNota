@@ -102,13 +102,39 @@ export function awardBadge(badge: string): Profile {
 }
 
 export function buildShareGrid(result: DailyResult, maxAttempts: number): string {
-  const cells = Array.from({ length: maxAttempts }, (_, i) => {
+  return Array.from({ length: maxAttempts }, (_, i) => {
     const attempt = result.attempts[i];
     if (attempt === "win") return "🟩";
     if (attempt === "fail") return "🟥";
     if (attempt === "skip") return "⬜";
     return "⬛";
   }).join("");
-  const score = result.won ? `${result.attempts.length}/${maxAttempts}` : `X/${maxAttempts}`;
-  return `🎵 En Una Nota ${result.date} ${score}\n${cells}`;
+}
+
+export function buildDailyShareText(
+  result: DailyResult,
+  stepsMs: number[],
+  streak: number,
+  url: string,
+): string {
+  const [year, month, day] = result.date.split("-");
+  const date = day && month ? `${day}/${month}` : result.date || year;
+  const max = stepsMs.length;
+  const grid = buildShareGrid(result, max);
+  const lines = [`🎵 En Una Nota · ${date}`, grid];
+  if (result.won) {
+    const attempts = result.attempts.length;
+    const seconds = (stepsMs[attempts - 1] ?? 0) / 1000;
+    lines.push(
+      attempts === 1
+        ? `🤯 ¡La saqué EN UNA NOTA! (${seconds.toLocaleString("es-AR")}s)`
+        : `🎧 La saqué con ${seconds.toLocaleString("es-AR")} segundos (${attempts}/${max})`,
+    );
+    if (streak > 1) lines.push(`🔥 Racha de ${streak} días`);
+    lines.push("¿Vos en cuánto la sacás? 👇");
+  } else {
+    lines.push("😵 Hoy no la saqué ni con el tema entero", "¿Vos la sacás? 👇");
+  }
+  lines.push(url);
+  return lines.join("\n");
 }
