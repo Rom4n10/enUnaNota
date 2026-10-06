@@ -50,3 +50,12 @@ $$;
 
 revoke execute on function public.game_stats() from public, anon, authenticated;
 grant execute on function public.game_stats() to service_role;
+
+-- Cache of iTunes search results, so deploys start warm and Apple's rate limit is rarely hit.
+create table if not exists public.itunes_cache (
+  key text primary key,
+  tracks jsonb not null,
+  fetched_at timestamptz not null default now()
+);
+
+alter table public.itunes_cache enable row level security;
