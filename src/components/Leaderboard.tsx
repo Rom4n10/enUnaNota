@@ -6,16 +6,37 @@ import type { ScoreEntry } from "@/lib/types";
 
 const PLACE = ["bg-yellow text-ink", "bg-white/80 text-ink", "bg-orange text-ink"];
 
-export function Leaderboard({ entries, title = "Ranking de la semana" }: { entries: ScoreEntry[]; title?: string }) {
-  if (!entries.length) return null;
+type Props = {
+  entries: ScoreEntry[];
+  title?: string;
+  limit?: number;
+  format?: (score: number) => string;
+  emptyText?: string;
+};
+
+const defaultFormat = (score: number) => score.toLocaleString("es-AR");
+
+export function Leaderboard({
+  entries,
+  title = "Ranking de la semana",
+  limit = 5,
+  format = defaultFormat,
+  emptyText,
+}: Props) {
+  if (!entries.length && !emptyText) return null;
   return (
     <div className="space-y-2 text-left">
       <p className="eyebrow flex items-center gap-1.5">
         <Trophy size={13} strokeWidth={2.6} />
         {title}
       </p>
+      {entries.length === 0 && (
+        <p className="rounded-xl border border-dashed border-white/10 px-3 py-4 text-center text-sm text-white/45">
+          {emptyText}
+        </p>
+      )}
       <ol className="space-y-1.5">
-        {entries.slice(0, 5).map((entry, i) => (
+        {entries.slice(0, limit).map((entry, i) => (
           <motion.li
             key={`${entry.name}-${entry.at}`}
             layout
@@ -32,7 +53,7 @@ export function Leaderboard({ entries, title = "Ranking de la semana" }: { entri
               {i + 1}
             </span>
             <span className="flex-1 truncate font-semibold text-white/80">{entry.name}</span>
-            <span className="font-display font-bold tabular-nums">{entry.score.toLocaleString("es-AR")}</span>
+            <span className="font-display font-bold tabular-nums">{format(entry.score)}</span>
           </motion.li>
         ))}
       </ol>

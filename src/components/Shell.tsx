@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Trophy } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 import { Logo } from "@/components/Logo";
 
@@ -25,15 +25,25 @@ export function Shell({ children, back = true, wide = false, style }: Props) {
             En Una <span className="text-lime">Nota</span>
           </span>
         </Link>
-        {back && (
+        <nav className="flex items-center gap-2">
           <Link
-            href="/"
-            className="group flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3.5 py-2 text-sm font-bold text-white/70 transition hover:border-white/25 hover:text-white"
+            href="/rankings"
+            aria-label="Rankings"
+            className="group flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm font-bold text-white/70 transition hover:border-yellow/60 hover:text-yellow sm:px-3.5"
           >
-            <ArrowLeft size={16} className="transition-transform group-hover:-translate-x-0.5" />
-            Modos
+            <Trophy size={16} className="transition-transform group-hover:-rotate-12 group-hover:scale-110" />
+            <span className={back ? "hidden sm:inline" : ""}>Rankings</span>
           </Link>
-        )}
+          {back && (
+            <Link
+              href="/"
+              className="group flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3.5 py-2 text-sm font-bold text-white/70 transition hover:border-white/25 hover:text-white"
+            >
+              <ArrowLeft size={16} className="transition-transform group-hover:-translate-x-0.5" />
+              Modos
+            </Link>
+          )}
+        </nav>
       </header>
       {children}
     </main>

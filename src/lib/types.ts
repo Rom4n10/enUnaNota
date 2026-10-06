@@ -27,6 +27,8 @@ export type DailyPayload = RoundPayload & {
 
 export type ScoreEntry = { name: string; score: number; at: number };
 
+export type ArtistBoard = { artist: string; plays: number; leader: ScoreEntry };
+
 export type ChaosType = "none" | "double" | "short";
 
 export type RoomMode = "classic" | "buzzer" | "auction";
