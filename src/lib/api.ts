@@ -1,4 +1,5 @@
 import type {
+  ArtistBoard,
   Category,
   ChainGuess,
   ChainRound,
@@ -89,9 +90,16 @@ export const suggestArtists = (q: string) =>
     (r) => r.artists,
   );
 
-export const getLeaderboard = (mode: string, categoryId: string) =>
+export type Period = "week" | "all";
+
+export const getLeaderboard = (mode: string, categoryId: string, period: Period = "week") =>
   request<{ week: string; top: ScoreEntry[] }>(
-    `/api/leaderboard?mode=${encodeURIComponent(mode)}&categoryId=${encodeURIComponent(categoryId)}`,
+    `/api/leaderboard?mode=${encodeURIComponent(mode)}&categoryId=${encodeURIComponent(categoryId)}&period=${period}`,
+  );
+
+export const getTopArtists = (period: Period = "week") =>
+  request<{ week: string; artists: ArtistBoard[] }>(`/api/leaderboard/artists?period=${period}`).then(
+    (r) => r.artists,
   );
 
 export const submitScore = (payload: {
@@ -99,6 +107,7 @@ export const submitScore = (payload: {
   categoryId: string;
   name: string;
   score: number;
+  period?: Period;
 }) =>
   request<{ week: string; rank: number | null; top: ScoreEntry[] }>("/api/leaderboard", {
     method: "POST",

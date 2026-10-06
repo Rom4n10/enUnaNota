@@ -10,7 +10,7 @@ import {
 } from "./daily.js";
 import { getArtistTracks, getCategoryTracks, searchTracks, type Track } from "./itunes.js";
 import { gameStats, recordGame } from "./games.js";
-import { submitScore, topScores, weekKey } from "./leaderboard.js";
+import { ARTIST_MODE, submitScore, topArtists, topScores, weekKey, type Period } from "./leaderboard.js";
 import {
   chainPartner,
   createImpostorGroup,
@@ -224,29 +224,44 @@ api.get("/artist/suggest", async (req, res) => {
   res.json({ artists });
 });
 
+const periodOf = (value: unknown): Period => (value === "all" ? "all" : "week");
+const cleanCategory = (value: unknown) => String(value ?? "all").trim().replace(/\s+/g, " ").slice(0, 64);
+/** Artist challenge scores are hits * 100 plus a speed bonus below 100. */
+const ARTIST_MAX_SCORE = 1099;
+
 api.get("/leaderboard", async (req, res) => {
   const mode = String(req.query.mode ?? "rush").slice(0, 32);
-  const categoryId = String(req.query.categoryId ?? "all").slice(0, 64);
-  res.json({ week: weekKey(), top: await topScores(mode, categoryId) });
+  const categoryId = cleanCategory(req.query.categoryId);
+  const period = periodOf(req.query.period);
+  res.json({ week: weekKey(), period, top: await topScores(mode, categoryId, period) });
+});
+
+api.get("/leaderboard/artists", async (req, res) => {
+  const period = periodOf(req.query.period);
+  res.json({ week: weekKey(), period, artists: await topArtists(period) });
 });
 
 api.post("/leaderboard", async (req, res) => {
-  const { mode, categoryId, name, score } = req.body as {
+  const { mode, categoryId, name, score, period } = req.body as {
     mode?: string;
     categoryId?: string;
     name?: string;
     score?: number;
+    period?: string;
   };
   const points = Number(score);
   if (!Number.isFinite(points) || points < 0) {
     res.status(400).json({ error: "invalid_score" });
     return;
   }
+  const cleanMode = String(mode ?? "rush").slice(0, 32);
+  const cap = cleanMode === ARTIST_MODE ? ARTIST_MAX_SCORE : 1_000_000;
   const result = await submitScore(
-    String(mode ?? "rush").slice(0, 32),
-    String(categoryId ?? "all").slice(0, 64),
+    cleanMode,
+    cleanCategory(categoryId),
     String(name ?? "").trim(),
-    Math.min(Math.round(points), 1_000_000),
+    Math.min(Math.round(points), cap),
+    periodOf(period),
   );
   res.json({ week: weekKey(), ...result });
 });
