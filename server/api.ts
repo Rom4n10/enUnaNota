@@ -9,6 +9,7 @@ import {
   msUntilNextPuzzle,
 } from "./daily.js";
 import { getArtistTracks, getCategoryTracks, searchTracks, type Track } from "./itunes.js";
+import { gameStats, recordGame } from "./games.js";
 import { submitScore, topScores, weekKey } from "./leaderboard.js";
 import {
   chainPartner,
@@ -223,13 +224,13 @@ api.get("/artist/suggest", async (req, res) => {
   res.json({ artists });
 });
 
-api.get("/leaderboard", (req, res) => {
-  const mode = String(req.query.mode ?? "rush");
-  const categoryId = String(req.query.categoryId ?? "all");
-  res.json({ week: weekKey(), top: topScores(mode, categoryId) });
+api.get("/leaderboard", async (req, res) => {
+  const mode = String(req.query.mode ?? "rush").slice(0, 32);
+  const categoryId = String(req.query.categoryId ?? "all").slice(0, 64);
+  res.json({ week: weekKey(), top: await topScores(mode, categoryId) });
 });
 
-api.post("/leaderboard", (req, res) => {
+api.post("/leaderboard", async (req, res) => {
   const { mode, categoryId, name, score } = req.body as {
     mode?: string;
     categoryId?: string;
@@ -241,8 +242,44 @@ api.post("/leaderboard", (req, res) => {
     res.status(400).json({ error: "invalid_score" });
     return;
   }
-  const result = submitScore(mode ?? "rush", categoryId ?? "all", String(name ?? "").trim(), Math.round(points));
+  const result = await submitScore(
+    String(mode ?? "rush").slice(0, 32),
+    String(categoryId ?? "all").slice(0, 64),
+    String(name ?? "").trim(),
+    Math.min(Math.round(points), 1_000_000),
+  );
   res.json({ week: weekKey(), ...result });
+});
+
+const SOLO_MODES = new Set(["diario", "rush", "artista", "anio", "linea", "impostor", "cadena"]);
+
+api.post("/games", (req, res) => {
+  const { mode, categoryId, score } = req.body as { mode?: string; categoryId?: string; score?: number };
+  if (!mode || !SOLO_MODES.has(mode)) {
+    res.status(400).json({ error: "invalid_mode" });
+    return;
+  }
+  const points = Number(score);
+  recordGame({
+    mode,
+    categoryId: categoryId ? String(categoryId) : null,
+    score: Number.isFinite(points) ? points : null,
+  });
+  res.json({ ok: true });
+});
+
+api.get("/stats", async (_req, res) => {
+  try {
+    const stats = await gameStats();
+    if (!stats) {
+      res.status(503).json({ error: "stats_disabled" });
+      return;
+    }
+    res.json(stats);
+  } catch (err) {
+    console.error("stats", err);
+    res.status(502).json({ error: "stats_unavailable" });
+  }
 });
 
 api.post("/answer", (req, res) => {

@@ -24,6 +24,7 @@ import {
 import { updateProfile } from "@/lib/storage";
 import type { Category, RoundPayload, ScoreEntry, Solution } from "@/lib/types";
 import { preloadPreview, useAutoplay, usePreviewPlayer } from "@/lib/useAudio";
+import { useGameLog } from "@/lib/useGameLog";
 import { useProfile } from "@/lib/useProfile";
 
 const TOTAL_ROUNDS = 10;
@@ -49,6 +50,7 @@ export default function YearPage() {
   const { status, playClip, stop, getAnalyser } = usePreviewPlayer(round?.audioUrl ?? null);
   const profile = useProfile();
   const [typedName, setTypedName] = useState<string | null>(null);
+  useGameLog(phase === "over", { mode: "anio", categoryId, score });
   const name = typedName ?? profile.nickname;
 
   useEffect(() => {

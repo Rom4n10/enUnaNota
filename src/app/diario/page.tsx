@@ -9,7 +9,7 @@ import { Shell } from "@/components/Shell";
 import { Waveform } from "@/components/Waveform";
 import { celebrate, fail } from "@/lib/fx";
 import { accentStyle, modeOf } from "@/lib/modes";
-import { getDaily, guessDaily } from "@/lib/api";
+import { getDaily, guessDaily, logGame } from "@/lib/api";
 import {
   buildDailyShareText,
   getDailyResult,
@@ -97,6 +97,7 @@ export default function DailyPage() {
       setSolution(res.solution);
       saveDailyResult({ date: daily.date, attempts: nextAttempts, won: res.correct, finished: true });
       setStreak(registerDailyWin(daily.date, res.correct).streak);
+      logGame({ mode: "diario", score: res.correct ? nextAttempts.length : 0 }).catch(() => undefined);
     } else {
       saveDailyResult({ date: daily.date, attempts: nextAttempts, won: false, finished: false });
     }

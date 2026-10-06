@@ -16,6 +16,7 @@ import { answerRound, getCategories, getLeaderboard, getRound, submitScore } fro
 import { updateProfile } from "@/lib/storage";
 import type { Category, RoundPayload, ScoreEntry } from "@/lib/types";
 import { preloadPreview, useAutoplay, usePreviewPlayer } from "@/lib/useAudio";
+import { useGameLog } from "@/lib/useGameLog";
 import { useProfile } from "@/lib/useProfile";
 
 const START_MS = 45_000;
@@ -51,6 +52,7 @@ export default function RushPage() {
   const profile = useProfile();
   const best = profile.rushBest;
   const [typedName, setTypedName] = useState<string | null>(null);
+  useGameLog(phase === "over", { mode: "rush", categoryId, score });
   const name = typedName ?? profile.nickname;
 
   useEffect(() => {
