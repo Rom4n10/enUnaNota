@@ -9,7 +9,7 @@ type Props = {
   bars?: number;
 };
 
-export function Waveform({ active, getAnalyser, color = "#c084fc", bars = 48 }: Props) {
+export function Waveform({ active, getAnalyser, color = "#c8ff2e", bars = 48 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const levels = useRef<number[]>(Array.from({ length: bars }, () => 0.06));
 

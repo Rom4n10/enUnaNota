@@ -1,146 +1,148 @@
 "use client";
 
 import Link from "next/link";
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
+import { ArrowRight, Award, Flame, Timer } from "lucide-react";
 import { Shell } from "@/components/Shell";
+import { accentStyle, MODES, type ModeInfo } from "@/lib/modes";
 import { useProfile } from "@/lib/useProfile";
 
-const MODES = [
-  {
-    href: "/diario",
-    emoji: "📅",
-    title: "En Una Nota",
-    tagline: "Desafío diario",
-    detail: "Un tema por día para todo el mundo. 6 intentos: 0.8s, 1.5s, 3s, 6s, 12s y 30s.",
-    accent: "from-fuchsia-500/25 to-violet-500/10",
-  },
-  {
-    href: "/rush",
-    emoji: "⏱️",
-    title: "Rush",
-    tagline: "Contrarreloj",
-    detail: "45 segundos en el reloj. Acertás +4s, errás -6s. Combo x2 en modo Fiebre.",
-    accent: "from-amber-500/25 to-rose-500/10",
-  },
-  {
-    href: "/sala",
-    emoji: "🎉",
-    title: "Sala de Amigos",
-    tagline: "2 a 12 jugadores",
-    detail:
-      "Código de 4 letras, audio sincronizado, buzzer y la Subasta de Segundos: el que menos segundos apuesta se juega el tema.",
-    accent: "from-sky-500/25 to-emerald-500/10",
-  },
-  {
-    href: "/artista",
-    emoji: "🏅",
-    title: "Desafío de Artista",
-    tagline: "Discografía",
-    detail: "10 temas de un artista escuchando solo el primer segundo. Ganás insignias.",
-    accent: "from-emerald-500/25 to-cyan-500/10",
-  },
-  {
-    href: "/anio",
-    emoji: "🕰️",
-    title: "Adiviná el año",
-    tagline: "Máquina del tiempo",
-    detail: "8 segundos por tema y cuatro años posibles. ¿Sabés de qué época es cada hit?",
-    accent: "from-indigo-500/25 to-fuchsia-500/10",
-  },
-  {
-    href: "/linea",
-    emoji: "🧭",
-    title: "Time Machine",
-    tagline: "Línea de tiempo",
-    detail: "2,5 segundos y a ubicar el tema en tu línea. Cada acierto la hace más difícil.",
-    accent: "from-violet-500/25 to-sky-500/10",
-  },
-  {
-    href: "/impostor",
-    emoji: "🕵️",
-    title: "El Impostor",
-    tagline: "Tres fragmentos",
-    detail: "Dos clips son del mismo artista y uno se coló. Encontrá al impostor en 1,5s.",
-    accent: "from-amber-500/25 to-lime-500/10",
-  },
-  {
-    href: "/cadena",
-    emoji: "🔗",
-    title: "Cadena de Feats",
-    tagline: "6 grados",
-    detail: "Bizarrap → Quevedo → Duki… acertá la colaboración y seguí la cadena contrarreloj.",
-    accent: "from-emerald-500/25 to-teal-500/10",
-  },
-];
+const HERO_WORDS = ["Adiviná", "la", "canción"];
+
+function ModeCard({ mode, index, featured = false }: { mode: ModeInfo; index: number; featured?: boolean }) {
+  const Icon = mode.icon;
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 24, scale: 0.97 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ delay: 0.15 + 0.05 * index, type: "spring", stiffness: 260, damping: 24 }}
+      whileHover={{ y: -5 }}
+      whileTap={{ scale: 0.97 }}
+      style={accentStyle(mode.color)}
+      className={featured ? "sm:col-span-2" : ""}
+    >
+      <Link
+        href={mode.href}
+        className={`card group flex h-full overflow-hidden transition-colors hover:border-accent/60 ${
+          featured ? "flex-col gap-5 p-6 sm:flex-row sm:items-center sm:p-7" : "flex-col gap-3 p-5"
+        }`}
+      >
+        <span
+          aria-hidden
+          className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-accent opacity-[0.08] blur-2xl transition-opacity duration-500 group-hover:opacity-25"
+        />
+        <motion.span
+          className={`tile shrink-0 transition-transform duration-300 group-hover:-rotate-6 group-hover:scale-110 ${
+            featured ? "h-16 w-16" : "h-12 w-12"
+          }`}
+        >
+          <Icon size={featured ? 32 : 24} strokeWidth={2.4} />
+        </motion.span>
+        <div className="flex-1 space-y-1.5">
+          <p className="eyebrow">{mode.tagline}</p>
+          <p className={`font-display font-extrabold leading-tight ${featured ? "text-3xl" : "text-xl"}`}>
+            {mode.title}
+          </p>
+          <p className="text-sm leading-relaxed text-white/60">{mode.detail}</p>
+        </div>
+        {featured ? (
+          <span className="btn-accent shrink-0 self-start sm:self-center">
+            Jugar el de hoy
+            <ArrowRight size={18} strokeWidth={2.6} className="transition-transform group-hover:translate-x-1" />
+          </span>
+        ) : (
+          <span className="mt-auto flex items-center gap-1.5 pt-2 font-display text-sm font-extrabold text-accent">
+            Jugar
+            <ArrowRight size={16} strokeWidth={2.6} className="transition-transform group-hover:translate-x-1.5" />
+          </span>
+        )}
+      </Link>
+    </motion.div>
+  );
+}
 
 export default function Home() {
   const profile = useProfile();
+  const [daily, ...rest] = MODES;
 
   return (
-    <Shell back={false}>
-      <section className="space-y-3">
-        <motion.h1
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-4xl font-black leading-tight sm:text-5xl"
+    <Shell back={false} wide>
+      <section className="space-y-4 pt-2 sm:pt-6">
+        <h1 className="font-display text-[44px] font-extrabold leading-[0.95] sm:text-7xl">
+          <span className="flex flex-wrap gap-x-3">
+            {HERO_WORDS.map((word, i) => (
+              <motion.span
+                key={word}
+                initial={{ opacity: 0, y: 30, rotate: 4 }}
+                animate={{ opacity: 1, y: 0, rotate: 0 }}
+                transition={{ delay: i * 0.08, type: "spring", stiffness: 300, damping: 20 }}
+              >
+                {word}
+              </motion.span>
+            ))}
+          </span>
+          <motion.span
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.3, type: "spring", stiffness: 260, damping: 14 }}
+            className="relative mt-1 inline-block text-lime"
+          >
+            en una nota.
+            <motion.span
+              aria-hidden
+              initial={{ scaleX: 0 }}
+              animate={{ scaleX: 1 }}
+              transition={{ delay: 0.55, duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+              className="absolute -bottom-1 left-0 h-1.5 w-full origin-left rounded-full bg-pink"
+            />
+          </motion.span>
+        </h1>
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.45 }}
+          className="max-w-xl text-base text-white/60 sm:text-lg"
         >
-          Adiviná la canción
-          <span className="block text-fuchsia-400">en una nota.</span>
-        </motion.h1>
-        <p className="max-w-xl text-white/60">
-          Fragmentos de milisegundos, previews reales de iTunes y cero spoilers en la consola:
-          el servidor nunca te manda el título hasta que cierra la ronda.
-        </p>
+          Fragmentos de milisegundos de temas reales. Jugá solo, sumate al desafío diario o armá una sala con
+          amigos.
+        </motion.p>
         {(profile.streak > 0 || profile.rushBest > 0 || profile.badges.length > 0) && (
-          <div className="flex flex-wrap gap-2 text-sm">
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.55 }}
+            className="flex flex-wrap gap-2"
+          >
             {profile.streak > 0 && (
-              <span className="rounded-full bg-fuchsia-500/15 px-3 py-1 text-fuchsia-200">
-                🔥 Racha {profile.streak} {profile.streak === 1 ? "día" : "días"}
+              <span className="pill" style={accentStyle("#ff8a1f")}>
+                <Flame size={15} strokeWidth={2.6} />
+                Racha {profile.streak} {profile.streak === 1 ? "día" : "días"}
               </span>
             )}
             {profile.rushBest > 0 && (
-              <span className="rounded-full bg-amber-500/15 px-3 py-1 text-amber-200">
-                ⏱️ Récord Rush {profile.rushBest}
+              <span className="pill" style={accentStyle("#3db8ff")}>
+                <Timer size={15} strokeWidth={2.6} />
+                Récord Rush {profile.rushBest}
               </span>
             )}
             {profile.badges.map((badge) => (
-              <span key={badge} className="rounded-full bg-emerald-500/15 px-3 py-1 text-emerald-200">
-                🏅 {badge}
+              <span key={badge} className="pill" style={accentStyle("#ffd23f")}>
+                <Award size={15} strokeWidth={2.6} />
+                {badge}
               </span>
             ))}
-          </div>
+          </motion.div>
         )}
       </section>
 
-      <section className="grid gap-4 sm:grid-cols-2">
-        {MODES.map((mode, index) => (
-          <motion.div
-            key={mode.href}
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.05 * index }}
-          >
-            <Link
-              href={mode.href}
-              className={`card group flex h-full flex-col gap-2 bg-gradient-to-br p-5 transition hover:border-white/25 ${mode.accent}`}
-            >
-              <div className="flex items-center gap-3">
-                <span className="text-3xl">{mode.emoji}</span>
-                <div>
-                  <p className="text-lg font-bold">{mode.title}</p>
-                  <p className="text-xs uppercase tracking-widest text-white/45">{mode.tagline}</p>
-                </div>
-              </div>
-              <p className="text-sm text-white/65">{mode.detail}</p>
-              <span className="mt-auto pt-3 text-sm font-semibold text-fuchsia-300 transition group-hover:translate-x-1">
-                Jugar →
-              </span>
-            </Link>
-          </motion.div>
+      <section className="grid gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
+        <ModeCard mode={daily} index={0} featured />
+        {rest.map((mode, i) => (
+          <ModeCard key={mode.id} mode={mode} index={i + 1} />
         ))}
       </section>
 
-      <footer className="pb-6 text-center text-xs text-white/35">
+      <footer className="pt-2 text-center text-xs text-white/35">
         Audio: previews de 30 segundos de la Apple iTunes Search API, servidos por proxy.
       </footer>
     </Shell>

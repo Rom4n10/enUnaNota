@@ -1,9 +1,16 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion } from "motion/react";
+import { LoaderCircle, Play, RotateCcw, Repeat2, VenetianMask } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatedNumber } from "@/components/AnimatedNumber";
+import { CategoryPicker } from "@/components/CategoryPicker";
+import { ModeHeader } from "@/components/ModeHeader";
+import { RoundProgress } from "@/components/RoundProgress";
 import { Shell } from "@/components/Shell";
 import { Waveform } from "@/components/Waveform";
+import { celebrate, fail } from "@/lib/fx";
+import { accentStyle, modeOf } from "@/lib/modes";
 import { getCategories, getImpostorRound, guessImpostor } from "@/lib/api";
 import type { Category, ImpostorResult, ImpostorRound } from "@/lib/types";
 import { preloadPreview, usePreviewPlayer } from "@/lib/useAudio";
@@ -87,6 +94,8 @@ export default function ImpostorPage() {
     setPicked(clipId);
     const res = await guessImpostor(group.groupId, clipId);
     setResult(res);
+    if (res.correct) celebrate();
+    else fail();
     if (res.correct) setScore((s) => s + 1);
     setTimeout(async () => {
       if (index + 1 >= TOTAL_ROUNDS) {
@@ -102,40 +111,18 @@ export default function ImpostorPage() {
     }, 3000);
   }
 
+  const accent = accentStyle(modeOf("impostor").color);
+
   if (phase === "setup" || phase === "loading") {
     return (
-      <Shell>
-        <section className="card space-y-4 p-5">
-          <h1 className="text-2xl font-black">🕵️ El Impostor</h1>
-          <p className="text-sm text-white/60">
-            Tres fragmentos de 1,5 segundos: dos son del mismo artista y uno se coló de otro.
-            Encontrá al impostor.
-          </p>
-          <div>
-            <p className="mb-2 text-xs uppercase tracking-widest text-white/40">Categoría</p>
-            <div className="flex flex-wrap gap-2">
-              {categories.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => setCategoryId(c.id)}
-                  className={`rounded-full border px-4 py-2 text-sm transition ${
-                    c.id === categoryId
-                      ? "border-fuchsia-400/70 bg-fuchsia-500/20"
-                      : "border-white/12 bg-white/5 hover:bg-white/10"
-                  }`}
-                >
-                  {c.emoji} {c.name}
-                </button>
-              ))}
-            </div>
-          </div>
-          <button
-            type="button"
-            className="btn-primary w-full"
-            onClick={start}
-            disabled={phase === "loading"}
-          >
+      <Shell style={accent}>
+        <ModeHeader id="impostor">
+          Tres fragmentos de 1,5 segundos: dos son del mismo artista y uno se coló de otro. Encontrá al impostor.
+        </ModeHeader>
+        <section className="card space-y-5 p-5 sm:p-6">
+          <CategoryPicker categories={categories} value={categoryId} onChange={setCategoryId} />
+          <button type="button" className="btn-accent w-full text-lg" onClick={start} disabled={phase === "loading"}>
+            {phase === "loading" && <LoaderCircle size={18} className="animate-spin" />}
             {phase === "loading" ? "Buscando sospechosos…" : "Arrancar"}
           </button>
         </section>
@@ -145,96 +132,130 @@ export default function ImpostorPage() {
 
   if (phase === "over") {
     return (
-      <Shell>
-        <section className="card space-y-4 p-6 text-center">
-          <p className="text-xs uppercase tracking-widest text-white/40">Caso cerrado</p>
-          <p className="text-5xl font-black text-amber-300">
-            {score}/{TOTAL_ROUNDS}
+      <Shell style={accent}>
+        <motion.section
+          initial={{ opacity: 0, scale: 0.94 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ type: "spring", stiffness: 260, damping: 20 }}
+          className="card space-y-4 p-6 text-center"
+        >
+          <p className="eyebrow">Caso cerrado</p>
+          <p className="font-display text-7xl font-extrabold text-accent">
+            <AnimatedNumber value={score} />
+            <span className="text-3xl text-white/40">/{TOTAL_ROUNDS}</span>
           </p>
-          <button type="button" className="btn-primary w-full" onClick={start}>
+          <button type="button" className="btn-accent w-full" onClick={start}>
+            <RotateCcw size={18} strokeWidth={2.6} />
             Otra ronda
           </button>
-        </section>
+        </motion.section>
       </Shell>
     );
   }
 
   return (
-    <Shell>
-      <section className="card space-y-4 p-5">
-        <div className="flex items-center justify-between text-xs uppercase tracking-widest text-white/40">
-          <span>
+    <Shell style={accent}>
+      <section className="card space-y-4 p-5 sm:p-6">
+        <div className="flex items-center justify-between">
+          <span className="eyebrow">
             Caso {index + 1} / {TOTAL_ROUNDS}
           </span>
-          <span className="tabular-nums">{score} resueltos</span>
+          <span className="pill">
+            <AnimatedNumber value={score} /> resueltos
+          </span>
         </div>
+        <RoundProgress index={index} total={TOTAL_ROUNDS} />
 
-        <p className="text-sm text-white/70">
-          Dos fragmentos son de <span className="font-bold text-amber-300">{group?.artist}</span>.
-          ¿Cuál no?
+        <p className="font-display text-lg font-bold leading-snug">
+          Dos fragmentos son de <span className="text-accent">{group?.artist}</span>. ¿Cuál no?
         </p>
 
-        <div className="rounded-2xl bg-black/30 p-2">
-          <Waveform active={status === "playing"} getAnalyser={getAnalyser} color="#fbbf24" />
+        <div className="stage">
+          <Waveform active={status === "playing"} getAnalyser={getAnalyser} color="#ff5e5b" />
         </div>
 
-        <div className="grid gap-2">
+        <div className="grid gap-2.5 sm:grid-cols-3">
           {group?.clips.map((clip, i) => {
             const reveal = result?.clips.find((c) => c.clipId === clip.clipId);
+            const isActive = active === clip.clipId && status === "playing";
+            const mine = picked === clip.clipId;
             const tone = !reveal
-              ? "border-white/12 bg-white/5 hover:bg-white/10"
+              ? isActive
+                ? "border-accent bg-accent/10"
+                : mine
+                  ? "border-accent/70 bg-white/[0.06]"
+                  : "border-white/10 bg-surface-2"
               : reveal.impostor
-                ? "border-lime-400/70 bg-lime-500/15"
-                : "border-white/12 bg-white/5 opacity-70";
+                ? "border-lime bg-lime/10"
+                : mine
+                  ? "border-coral/70 bg-coral/10"
+                  : "border-white/10 bg-surface-2 opacity-60";
             return (
-              <div key={clip.clipId} className={`rounded-2xl border p-3 transition ${tone}`}>
+              <motion.div
+                key={clip.clipId}
+                initial={{ opacity: 0, y: 16 }}
+                animate={
+                  reveal && mine && !reveal.impostor
+                    ? { opacity: 1, y: 0, x: [0, -8, 8, -5, 5, 0] }
+                    : reveal?.impostor
+                      ? { opacity: 1, y: 0, scale: [1, 1.05, 1] }
+                      : { opacity: 1, y: 0, scale: isActive ? 1.02 : 1 }
+                }
+                transition={{ delay: reveal ? 0 : i * 0.06, duration: 0.4 }}
+                className={`space-y-2.5 rounded-2xl border p-3 shadow-[0_4px_0_rgba(0,0,0,0.5)] transition-colors ${tone}`}
+              >
                 <div className="flex items-center gap-2">
-                  <button
+                  <motion.button
                     type="button"
-                    className="btn-ghost shrink-0"
+                    whileTap={{ scale: 0.9 }}
+                    className="relative grid h-11 w-11 shrink-0 place-items-center rounded-full bg-accent text-ink"
                     onClick={() => play(clip.clipId)}
+                    aria-label={`Escuchar fragmento ${i + 1}`}
                   >
-                    ▶ {i + 1}
-                  </button>
-                  <button
-                    type="button"
-                    className="flex-1 rounded-xl bg-white/10 px-3 py-2 text-sm font-semibold transition hover:bg-white/20 disabled:opacity-60"
-                    disabled={Boolean(picked)}
-                    onClick={() => pick(clip.clipId)}
-                  >
-                    {picked === clip.clipId ? "Tu elección" : "Es el impostor"}
-                  </button>
+                    {isActive && (
+                      <span className="absolute inset-0 rounded-full bg-accent" style={{ animation: "ring 1.1s ease-out infinite" }} />
+                    )}
+                    <Play size={16} fill="currentColor" className="relative translate-x-px" />
+                  </motion.button>
+                  <span className="font-display text-2xl font-extrabold text-white/80">#{i + 1}</span>
                 </div>
+                <motion.button
+                  type="button"
+                  whileTap={picked ? undefined : { scale: 0.95 }}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-white/10 px-3 py-2.5 text-sm font-extrabold transition hover:bg-accent hover:text-ink disabled:pointer-events-none disabled:opacity-70"
+                  disabled={Boolean(picked)}
+                  onClick={() => pick(clip.clipId)}
+                >
+                  <VenetianMask size={16} strokeWidth={2.4} />
+                  {mine ? "Tu elección" : "Es el impostor"}
+                </motion.button>
                 <AnimatePresence>
                   {reveal && (
                     <motion.div
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: "auto" }}
                       exit={{ opacity: 0 }}
-                      className="mt-2 flex items-center gap-2"
+                      className="flex items-center gap-2 overflow-hidden"
                     >
                       {reveal.artwork && (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={reveal.artwork} alt="" className="h-10 w-10 rounded-lg" />
                       )}
-                      <div className="text-xs">
-                        <p className="font-bold">{reveal.title}</p>
-                        <p className="text-white/60">{reveal.artist}</p>
+                      <div className="min-w-0 text-xs">
+                        <p className="truncate font-bold">{reveal.title}</p>
+                        <p className="truncate text-white/60">{reveal.artist}</p>
                       </div>
                     </motion.div>
                   )}
                 </AnimatePresence>
-              </div>
+              </motion.div>
             );
           })}
         </div>
 
-        <button
-          type="button"
-          className="btn-ghost w-full"
-          onClick={() => group && playAll(group.clips)}
-        >
-          🔁 Escuchar los tres
+        <button type="button" className="btn-ghost w-full" onClick={() => group && playAll(group.clips)}>
+          <Repeat2 size={18} strokeWidth={2.4} />
+          Escuchar los tres
         </button>
       </section>
     </Shell>

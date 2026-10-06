@@ -1,8 +1,12 @@
 "use client";
 
+import { LoaderCircle, LogIn, Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { CategoryPicker } from "@/components/CategoryPicker";
+import { ModeHeader } from "@/components/ModeHeader";
 import { Shell } from "@/components/Shell";
+import { accentStyle, modeOf } from "@/lib/modes";
 import { getCategories } from "@/lib/api";
 import { getSocket } from "@/lib/socket";
 import { updateProfile } from "@/lib/storage";
@@ -47,61 +51,49 @@ export default function SalaLobbyPage() {
   }
 
   return (
-    <Shell>
-      <section className="card space-y-4 p-5">
-        <h1 className="text-2xl font-black">🎉 Sala de Amigos</h1>
-        <p className="text-sm text-white/60">
-          De 2 a 12 jugadores. El audio arranca al mismo tiempo para todos y el puntaje baja
-          mientras más tardás en apretar.
-        </p>
+    <Shell style={accentStyle(modeOf("sala").color)}>
+      <ModeHeader id="sala">
+        De 2 a 12 jugadores. El audio arranca al mismo tiempo para todos y el puntaje baja mientras más tardás en
+        apretar.
+      </ModeHeader>
+
+      <section className="card space-y-3 p-5 sm:p-6">
+        <p className="eyebrow">Tu apodo</p>
         <input
           value={nickname}
           onChange={(e) => setTypedNickname(e.target.value)}
           maxLength={16}
-          placeholder="Tu apodo"
-          className="w-full rounded-2xl border border-white/12 bg-white/5 px-4 py-4 outline-none placeholder:text-white/30 focus:border-fuchsia-400/60"
+          placeholder="¿Cómo te llaman?"
+          className="field text-lg"
         />
       </section>
 
-      <section className="card space-y-3 p-5">
-        <p className="text-xs uppercase tracking-widest text-white/40">Crear sala</p>
-        <div className="flex flex-wrap gap-2">
-          {categories.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              onClick={() => setCategoryId(c.id)}
-              className={`rounded-full border px-4 py-2 text-sm transition ${
-                c.id === categoryId
-                  ? "border-fuchsia-400/70 bg-fuchsia-500/20"
-                  : "border-white/12 bg-white/5 hover:bg-white/10"
-              }`}
-            >
-              {c.emoji} {c.name}
-            </button>
-          ))}
-        </div>
-        <button type="button" className="btn-primary w-full" disabled={busy} onClick={create}>
-          Crear sala
-        </button>
-      </section>
+      <div className="grid gap-5 sm:grid-cols-[1.4fr_1fr] sm:gap-6">
+        <section className="card space-y-4 p-5 sm:p-6">
+          <CategoryPicker categories={categories} value={categoryId} onChange={setCategoryId} label="Crear sala" />
+          <button type="button" className="btn-accent w-full text-lg" disabled={busy} onClick={create}>
+            {busy ? <LoaderCircle size={18} className="animate-spin" /> : <Plus size={20} strokeWidth={2.8} />}
+            Crear sala
+          </button>
+        </section>
 
-      <section className="card space-y-3 p-5">
-        <p className="text-xs uppercase tracking-widest text-white/40">Unirse con código</p>
-        <div className="flex gap-3">
+        <section className="card flex flex-col gap-3 p-5 sm:p-6">
+          <p className="eyebrow">Unirse con código</p>
           <input
             value={code}
             onChange={(e) => setCode(e.target.value.toUpperCase().slice(0, 4))}
+            onKeyDown={(e) => e.key === "Enter" && join()}
             placeholder="ABCD"
-            className="w-36 rounded-2xl border border-white/12 bg-white/5 px-4 py-4 text-center text-2xl font-black tracking-[0.4em] outline-none placeholder:text-white/20 focus:border-fuchsia-400/60"
+            className="field text-center font-display text-3xl font-extrabold tracking-[0.4em] placeholder:text-white/15"
           />
-          <button type="button" className="btn-ghost flex-1" onClick={join}>
+          <button type="button" className="btn-ghost mt-auto w-full" onClick={join}>
+            <LogIn size={18} strokeWidth={2.6} />
             Entrar
           </button>
-        </div>
-      </section>
+        </section>
+      </div>
 
-      {error && <p className="text-sm text-rose-300">{error}</p>}
+      {error && <p className="text-sm font-semibold text-coral">{error}</p>}
     </Shell>
   );
 }

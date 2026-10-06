@@ -1,9 +1,17 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion } from "motion/react";
+import { Heart, LoaderCircle, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatedNumber } from "@/components/AnimatedNumber";
+import { CategoryPicker } from "@/components/CategoryPicker";
+import { ListenButton } from "@/components/ListenButton";
+import { ModeHeader } from "@/components/ModeHeader";
 import { Shell } from "@/components/Shell";
+import { SolutionCard } from "@/components/SolutionCard";
 import { Waveform } from "@/components/Waveform";
+import { celebrate, fail } from "@/lib/fx";
+import { accentStyle, modeOf } from "@/lib/modes";
 import { getCategories, getTimelineRound, guessTimeline } from "@/lib/api";
 import type { Category, RoundPayload, Solution } from "@/lib/types";
 import { preloadPreview, useAutoplay, usePreviewPlayer } from "@/lib/useAudio";
@@ -92,6 +100,8 @@ export default function TimelinePage() {
     const res = await guessTimeline(round.roundId, after, before);
     setSolution(res.solution);
     setLastOk(res.correct);
+    if (res.correct) celebrate();
+    else fail();
     if (res.correct) {
       setScore((s) => s + 1);
       if (res.solution.year !== null) {
@@ -121,40 +131,19 @@ export default function TimelinePage() {
     }, 2400);
   }
 
+  const accent = accentStyle(modeOf("linea").color);
+
   if (phase === "setup" || phase === "loading") {
     return (
-      <Shell>
-        <section className="card space-y-4 p-5">
-          <h1 className="text-2xl font-black">🕰️ Time Machine</h1>
-          <p className="text-sm text-white/60">
-            Escuchás 2,5 segundos de un tema desconocido y lo ubicás en tu línea de tiempo. Cada
-            acierto suma una canción a la línea y los huecos se vuelven más finitos.
-          </p>
-          <div>
-            <p className="mb-2 text-xs uppercase tracking-widest text-white/40">Categoría</p>
-            <div className="flex flex-wrap gap-2">
-              {categories.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => setCategoryId(c.id)}
-                  className={`rounded-full border px-4 py-2 text-sm transition ${
-                    c.id === categoryId
-                      ? "border-fuchsia-400/70 bg-fuchsia-500/20"
-                      : "border-white/12 bg-white/5 hover:bg-white/10"
-                  }`}
-                >
-                  {c.emoji} {c.name}
-                </button>
-              ))}
-            </div>
-          </div>
-          <button
-            type="button"
-            className="btn-primary w-full"
-            onClick={start}
-            disabled={phase === "loading"}
-          >
+      <Shell style={accent}>
+        <ModeHeader id="linea">
+          Escuchás 2,5 segundos de un tema desconocido y lo ubicás en tu línea de tiempo. Cada acierto suma una canción
+          a la línea y los huecos se vuelven más finitos.
+        </ModeHeader>
+        <section className="card space-y-5 p-5 sm:p-6">
+          <CategoryPicker categories={categories} value={categoryId} onChange={setCategoryId} />
+          <button type="button" className="btn-accent w-full text-lg" onClick={start} disabled={phase === "loading"}>
+            {phase === "loading" && <LoaderCircle size={18} className="animate-spin" />}
             {phase === "loading" ? "Armando la línea…" : "Arrancar"}
           </button>
         </section>
@@ -164,81 +153,104 @@ export default function TimelinePage() {
 
   if (phase === "over") {
     return (
-      <Shell>
-        <section className="card space-y-4 p-6 text-center">
-          <p className="text-xs uppercase tracking-widest text-white/40">Se cortó la línea</p>
-          <p className="text-5xl font-black text-indigo-300">{score}</p>
+      <Shell style={accent}>
+        <motion.section
+          initial={{ opacity: 0, scale: 0.94 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ type: "spring", stiffness: 260, damping: 20 }}
+          className="card space-y-4 p-6 text-center"
+        >
+          <p className="eyebrow">Se cortó la línea</p>
+          <AnimatedNumber value={score} className="font-display text-7xl font-extrabold text-accent" />
           <p className="text-sm text-white/60">canciones bien ubicadas</p>
-          <button type="button" className="btn-primary w-full" onClick={start}>
+          <button type="button" className="btn-accent w-full" onClick={start}>
+            <RotateCcw size={18} strokeWidth={2.6} />
             Otra vuelta
           </button>
-        </section>
+        </motion.section>
       </Shell>
     );
   }
 
   return (
-    <Shell>
-      <section className="card space-y-4 p-5">
-        <div className="flex items-center justify-between text-xs uppercase tracking-widest text-white/40">
-          <span>{score} ubicadas</span>
-          <span>{"❤️".repeat(Math.max(0, lives))}</span>
+    <Shell style={accent}>
+      <section className="card space-y-4 p-5 sm:p-6">
+        <div className="flex items-center justify-between">
+          <span className="pill">
+            <AnimatedNumber value={score} /> ubicadas
+          </span>
+          <div className="flex gap-1">
+            {Array.from({ length: LIVES }, (_, i) => (
+              <motion.span
+                key={i}
+                animate={i < lives ? { scale: 1, opacity: 1 } : { scale: [1, 1.5, 0.8], opacity: 0.25 }}
+                transition={{ duration: 0.4 }}
+                className={i < lives ? "text-coral" : "text-white/40"}
+              >
+                <Heart size={20} strokeWidth={2.4} fill={i < lives ? "currentColor" : "none"} />
+              </motion.span>
+            ))}
+          </div>
         </div>
 
-        <div className="rounded-2xl bg-black/30 p-2">
-          <Waveform active={status === "playing"} getAnalyser={getAnalyser} color="#818cf8" />
+        <div className="stage">
+          <Waveform active={status === "playing"} getAnalyser={getAnalyser} color="#8c6cff" />
         </div>
 
-        <button type="button" className="btn-ghost w-full" onClick={() => playClip(CLIP_MS)}>
-          🔁 Escuchar de nuevo
-        </button>
+        <ListenButton status={status} className="w-full" label="Escuchar de nuevo" onPlay={() => playClip(CLIP_MS)} />
 
-        <div className="flex gap-1 overflow-x-auto pb-1">
-          {anchors.map((a) => (
-            <div
-              key={`${a.title}-${a.year}`}
-              className="min-w-24 shrink-0 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-center"
-            >
-              <p className="text-sm font-black tabular-nums text-indigo-300">{a.year}</p>
-              <p className="truncate text-[11px] text-white/50">{a.title}</p>
-            </div>
-          ))}
+        <div className="relative">
+          <div className="absolute inset-x-0 top-[22px] h-0.5 bg-gradient-to-r from-transparent via-accent/50 to-transparent" />
+          <motion.div layout className="relative flex gap-2 overflow-x-auto pb-2">
+            <AnimatePresence initial={false}>
+              {anchors.map((a) => (
+                <motion.div
+                  layout
+                  key={`${a.title}-${a.year}`}
+                  initial={{ opacity: 0, scale: 0.5, y: -20 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 22 }}
+                  className="flex min-w-24 max-w-32 shrink-0 flex-col items-center gap-1.5 text-center"
+                >
+                  <span className="rounded-xl bg-accent px-2.5 py-1.5 font-display text-sm font-extrabold tabular-nums text-ink shadow-[0_3px_0_rgba(0,0,0,0.4)]">
+                    {a.year}
+                  </span>
+                  <p className="w-full truncate text-[11px] font-semibold text-white/55">{a.title}</p>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </motion.div>
         </div>
 
         <div className="grid gap-2">
-          {slotsOf(anchors).map((slot) => (
-            <button
+          {slotsOf(anchors).map((slot, i) => (
+            <motion.button
               key={slot.label}
               type="button"
+              initial={{ opacity: 0, x: -12 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: i * 0.04 }}
+              whileHover={solution ? undefined : { x: 4 }}
+              whileTap={solution ? undefined : { scale: 0.97 }}
               disabled={Boolean(solution)}
               onClick={() => pick(slot.after, slot.before)}
-              className="rounded-2xl border border-white/12 bg-white/5 px-4 py-3 text-left text-sm transition hover:bg-white/10 disabled:opacity-50"
+              className="flex items-center justify-between rounded-2xl border border-white/10 bg-surface-2 px-4 py-3.5 text-left font-display font-bold shadow-[0_4px_0_rgba(0,0,0,0.55)] transition-colors hover:border-accent/70 disabled:opacity-50"
             >
               {slot.label}
-            </button>
+              <span className="h-2 w-2 rounded-full bg-accent/70" />
+            </motion.button>
           ))}
         </div>
 
         <AnimatePresence>
           {solution && (
-            <motion.div
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              className="flex items-center gap-3"
-            >
-              {solution.artwork && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={solution.artwork} alt="" className="h-12 w-12 rounded-xl" />
-              )}
-              <div className="text-sm">
-                <p className="font-bold">
-                  {lastOk ? "✅" : "❌"} {solution.title}{" "}
-                  {solution.year ? `(${solution.year})` : ""}
-                </p>
-                <p className="text-white/60">{solution.artist}</p>
-              </div>
-            </motion.div>
+            <SolutionCard
+              title={solution.title}
+              artist={solution.artist}
+              artwork={solution.artwork}
+              year={solution.year}
+              ok={lastOk ?? undefined}
+            />
           )}
         </AnimatePresence>
       </section>

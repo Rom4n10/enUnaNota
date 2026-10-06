@@ -1,10 +1,18 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "motion/react";
+import { ArrowRight, Award, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AnimatedNumber } from "@/components/AnimatedNumber";
+import { ListenButton } from "@/components/ListenButton";
+import { ModeHeader } from "@/components/ModeHeader";
+import { RoundProgress } from "@/components/RoundProgress";
 import { Shell } from "@/components/Shell";
 import { OptionGrid } from "@/components/OptionGrid";
+import { SolutionCard } from "@/components/SolutionCard";
 import { Waveform } from "@/components/Waveform";
+import { celebrate } from "@/lib/fx";
+import { accentStyle, modeOf } from "@/lib/modes";
 import { answerRound, getArtistRound, suggestArtists } from "@/lib/api";
 import { awardBadge } from "@/lib/storage";
 import type { RoundPayload, Solution } from "@/lib/types";
@@ -100,6 +108,7 @@ export default function ArtistPage() {
     const finalHits = hits;
     if (nextIndex >= TOTAL_ROUNDS) {
       setPhase("over");
+      if (finalHits >= 5) celebrate(undefined, true);
       if (finalHits >= 8) {
         const earned = `Fan Nivel Oro de ${artist}`;
         awardBadge(earned);
@@ -115,41 +124,45 @@ export default function ArtistPage() {
     await loadRound(artist);
   }
 
+  const accent = accentStyle(modeOf("artista").color);
+
   if (phase === "setup") {
     return (
-      <Shell>
-        <section className="card space-y-4 p-5">
-          <h1 className="text-2xl font-black">🏅 Desafío de Artista</h1>
-          <p className="text-sm text-white/60">
-            10 canciones seguidas escuchando solo el primer segundo. Con 8 aciertos te llevás la
-            insignia de oro.
-          </p>
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && query.trim() && start(query.trim())}
-            placeholder="Duki, Charly García, Taylor Swift…"
-            className="w-full rounded-2xl border border-white/12 bg-white/5 px-4 py-4 outline-none placeholder:text-white/30 focus:border-fuchsia-400/60"
-          />
-          <div className="flex flex-wrap gap-2">
-            {visibleSuggestions.map((name) => (
-              <button
-                key={name}
-                type="button"
-                className="rounded-full border border-white/12 bg-white/5 px-4 py-2 text-sm hover:bg-white/10"
-                onClick={() => start(name)}
-              >
-                {name}
-              </button>
-            ))}
+      <Shell style={accent}>
+        <ModeHeader id="artista">
+          10 canciones seguidas escuchando solo el primer segundo. Con 8 aciertos te llevás la insignia de oro.
+        </ModeHeader>
+        <section className="card space-y-4 p-5 sm:p-6">
+          <div className="relative">
+            <Search size={18} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-white/35" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && query.trim() && start(query.trim())}
+              placeholder="Duki, Charly García, Taylor Swift…"
+              className="field pl-11"
+            />
           </div>
-          {error && <p className="text-sm text-rose-300">{error}</p>}
-          <button
-            type="button"
-            className="btn-primary w-full"
-            disabled={!query.trim()}
-            onClick={() => start(query.trim())}
-          >
+          <div className="flex flex-wrap gap-2">
+            <AnimatePresence>
+              {visibleSuggestions.map((name, i) => (
+                <motion.button
+                  key={name}
+                  type="button"
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  transition={{ delay: i * 0.03, type: "spring", stiffness: 500, damping: 24 }}
+                  className="chip"
+                  onClick={() => start(name)}
+                >
+                  {name}
+                </motion.button>
+              ))}
+            </AnimatePresence>
+          </div>
+          {error && <p className="text-sm font-semibold text-coral">{error}</p>}
+          <button type="button" className="btn-accent w-full" disabled={!query.trim()} onClick={() => start(query.trim())}>
             Empezar
           </button>
         </section>
@@ -159,48 +172,64 @@ export default function ArtistPage() {
 
   if (phase === "over") {
     return (
-      <Shell>
-        <section className="card space-y-3 p-6 text-center">
-          <p className="text-xs uppercase tracking-widest text-white/40">{artist}</p>
-          <p className="text-5xl font-black text-emerald-300">{hits}/{TOTAL_ROUNDS}</p>
+      <Shell style={accent}>
+        <motion.section
+          initial={{ opacity: 0, scale: 0.94 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ type: "spring", stiffness: 260, damping: 20 }}
+          className="card space-y-4 p-6 text-center"
+        >
+          <p className="eyebrow">{artist}</p>
+          <p className="font-display text-7xl font-extrabold text-accent">
+            <AnimatedNumber value={hits} />
+            <span className="text-3xl text-white/40">/{TOTAL_ROUNDS}</span>
+          </p>
           {badge ? (
-            <p className="text-lg font-bold text-amber-200">🏅 {badge}</p>
+            <motion.div
+              initial={{ scale: 0, rotate: -15 }}
+              animate={{ scale: 1, rotate: 0 }}
+              transition={{ delay: 0.2, type: "spring", stiffness: 300, damping: 12 }}
+              className="mx-auto flex w-fit items-center gap-2 rounded-2xl bg-accent px-4 py-3 font-display font-extrabold text-ink shadow-[0_5px_0_rgba(0,0,0,0.4)]"
+            >
+              <Award size={22} strokeWidth={2.6} />
+              {badge}
+            </motion.div>
           ) : (
             <p className="text-white/60">Necesitás 5 aciertos para la primera insignia.</p>
           )}
-          <button type="button" className="btn-primary w-full" onClick={() => setPhase("setup")}>
+          <button type="button" className="btn-accent w-full" onClick={() => setPhase("setup")}>
             Otro artista
           </button>
-        </section>
+        </motion.section>
       </Shell>
     );
   }
 
   return (
-    <Shell>
-      <section className="card space-y-4 p-5">
-        <div className="flex items-center justify-between text-xs uppercase tracking-widest text-white/40">
-          <span>{artist}</span>
-          <span>
-            {index + 1} / {TOTAL_ROUNDS} · {hits} aciertos
+    <Shell style={accent}>
+      <section className="card space-y-4 p-5 sm:p-6">
+        <div className="flex items-center justify-between">
+          <span className="eyebrow truncate">{artist}</span>
+          <span className="pill">
+            {index + 1}/{TOTAL_ROUNDS} · <AnimatedNumber value={hits} /> aciertos
           </span>
         </div>
+        <RoundProgress index={index} total={TOTAL_ROUNDS} />
 
-        <div className="rounded-2xl bg-black/30 p-2">
-          <Waveform active={status === "playing"} getAnalyser={getAnalyser} color="#34d399" />
+        <div className="stage">
+          <Waveform active={status === "playing"} getAnalyser={getAnalyser} color="#ffd23f" />
         </div>
 
-        <button
-          type="button"
-          className="btn-ghost w-full"
-          disabled={status === "loading"}
-          onClick={() => playClip(solution ? null : SNIPPET_MS)}
-        >
-          {status === "loading" ? "Cargando…" : solution ? "▶ Escuchar completa" : "▶ Repetir 1 segundo"}
-        </button>
+        <ListenButton
+          status={status}
+          className="w-full"
+          label={solution ? "Escuchar completa" : "Repetir 1 segundo"}
+          onPlay={() => playClip(solution ? null : SNIPPET_MS)}
+        />
 
         {round && (
           <OptionGrid
+            key={round.roundId}
             options={round.options}
             onPick={pick}
             correctId={solution?.correctOptionId ?? null}
@@ -209,23 +238,17 @@ export default function ArtistPage() {
           />
         )}
 
-        {solution && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-3">
-            <div className="flex items-center gap-3">
-              {solution.artwork && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={solution.artwork} alt="" className="h-14 w-14 rounded-xl" />
-              )}
-              <div>
-                <p className="font-bold">{solution.title}</p>
-                <p className="text-sm text-white/60">{solution.artist}</p>
-              </div>
-            </div>
-            <button type="button" className="btn-primary w-full" onClick={next}>
-              {index + 1 >= TOTAL_ROUNDS ? "Ver resultado" : "Siguiente"}
-            </button>
-          </motion.div>
-        )}
+        <AnimatePresence>
+          {solution && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-3">
+              <SolutionCard title={solution.title} artist={solution.artist} artwork={solution.artwork} />
+              <button type="button" className="btn-accent w-full" onClick={next}>
+                {index + 1 >= TOTAL_ROUNDS ? "Ver resultado" : "Siguiente"}
+                <ArrowRight size={18} strokeWidth={2.6} />
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </section>
     </Shell>
   );

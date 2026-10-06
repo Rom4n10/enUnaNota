@@ -1,10 +1,15 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion } from "motion/react";
+import { ChevronRight, Link2, LoaderCircle, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatedNumber } from "@/components/AnimatedNumber";
+import { ModeHeader } from "@/components/ModeHeader";
 import { Shell } from "@/components/Shell";
 import { OptionGrid } from "@/components/OptionGrid";
+import { SolutionCard } from "@/components/SolutionCard";
 import { Waveform } from "@/components/Waveform";
+import { accentStyle, modeOf } from "@/lib/modes";
 import { getChainRound, guessChain } from "@/lib/api";
 import type { ChainRound, Solution } from "@/lib/types";
 import { preloadPreview, useAutoplay, usePreviewPlayer } from "@/lib/useAudio";
@@ -120,39 +125,55 @@ export default function ChainPage() {
     }, 2200);
   }
 
+  const accent = accentStyle(modeOf("cadena").color);
+  const chainView = (
+    <div className="flex flex-wrap items-center gap-1">
+      <AnimatePresence initial={false}>
+        {links.map((artist, i) => (
+          <motion.span
+            key={`${artist}-${i}`}
+            layout
+            initial={{ opacity: 0, scale: 0.4, x: -10 }}
+            animate={{ opacity: 1, scale: 1, x: 0 }}
+            transition={{ type: "spring", stiffness: 500, damping: 22 }}
+            className="flex items-center gap-1"
+          >
+            {i > 0 && <ChevronRight size={14} className="text-accent/70" />}
+            <span
+              className={`rounded-full px-2.5 py-1 text-xs font-extrabold ${
+                i === links.length - 1 ? "bg-accent text-ink" : "bg-white/8 text-white/70"
+              }`}
+            >
+              {artist}
+            </span>
+          </motion.span>
+        ))}
+      </AnimatePresence>
+    </div>
+  );
+
   if (phase === "setup" || phase === "loading") {
     return (
-      <Shell>
-        <section className="card space-y-4 p-5">
-          <h1 className="text-2xl font-black">🔗 Cadena de Feats</h1>
-          <p className="text-sm text-white/60">
-            Suena una colaboración: acertá el tema y la cadena sigue con el artista invitado.
-            Dos minutos para armar la cadena más larga.
-          </p>
-          <input
-            value={seed}
-            onChange={(e) => setSeed(e.target.value)}
-            placeholder="Artista inicial"
-            className="w-full rounded-2xl border border-white/12 bg-white/5 px-4 py-3 outline-none placeholder:text-white/30 focus:border-fuchsia-400/60"
-          />
+      <Shell style={accent}>
+        <ModeHeader id="cadena">
+          Suena una colaboración: acertá el tema y la cadena sigue con el artista invitado. Dos minutos para armar la
+          cadena más larga.
+        </ModeHeader>
+        <section className="card space-y-4 p-5 sm:p-6">
+          <div className="relative">
+            <Link2 size={18} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-white/35" />
+            <input value={seed} onChange={(e) => setSeed(e.target.value)} placeholder="Artista inicial" className="field pl-11" />
+          </div>
           <div className="flex flex-wrap gap-2">
             {SEEDS.map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setSeed(s)}
-                className="rounded-full border border-white/12 bg-white/5 px-3 py-1.5 text-sm hover:bg-white/10"
-              >
-                {s}
+              <button key={s} type="button" data-active={s === seed} onClick={() => setSeed(s)} className="chip">
+                {s === seed && <span className="absolute inset-0 rounded-full bg-accent" />}
+                <span className="relative">{s}</span>
               </button>
             ))}
           </div>
-          <button
-            type="button"
-            className="btn-primary w-full"
-            onClick={start}
-            disabled={phase === "loading"}
-          >
+          <button type="button" className="btn-accent w-full text-lg" onClick={start} disabled={phase === "loading"}>
+            {phase === "loading" && <LoaderCircle size={18} className="animate-spin" />}
             {phase === "loading" ? "Buscando el primer feat…" : "Arrancar"}
           </button>
         </section>
@@ -162,39 +183,65 @@ export default function ChainPage() {
 
   if (phase === "over") {
     return (
-      <Shell>
-        <section className="card space-y-4 p-6 text-center">
-          <p className="text-xs uppercase tracking-widest text-white/40">{endReason}</p>
-          <p className="text-5xl font-black text-emerald-300">{Math.max(0, links.length - 1)}</p>
+      <Shell style={accent}>
+        <motion.section
+          initial={{ opacity: 0, scale: 0.94 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ type: "spring", stiffness: 260, damping: 20 }}
+          className="card space-y-4 p-6 text-center"
+        >
+          <p className="eyebrow">{endReason}</p>
+          <AnimatedNumber value={Math.max(0, links.length - 1)} className="font-display text-7xl font-extrabold text-accent" />
           <p className="text-sm text-white/60">eslabones encadenados</p>
-          <p className="text-sm text-white/70">{links.join(" → ")}</p>
-          <button type="button" className="btn-primary w-full" onClick={start}>
+          <div className="flex justify-center">{chainView}</div>
+          <button type="button" className="btn-accent w-full" onClick={start}>
+            <RotateCcw size={18} strokeWidth={2.6} />
             Otra cadena
           </button>
-        </section>
+        </motion.section>
       </Shell>
     );
   }
 
+  const urgency = msLeft < 15_000;
+
   return (
-    <Shell>
-      <section className="card space-y-4 p-5">
-        <div className="flex items-center justify-between text-xs uppercase tracking-widest text-white/40">
-          <span>{Math.max(0, links.length - 1)} eslabones</span>
-          <span className="tabular-nums">{(msLeft / 1000).toFixed(1)}s</span>
+    <Shell style={accent}>
+      <section className="card space-y-4 p-5 sm:p-6">
+        <div className="flex items-end justify-between">
+          <span className="pill">
+            <Link2 size={14} strokeWidth={2.6} />
+            <AnimatedNumber value={Math.max(0, links.length - 1)} /> eslabones
+          </span>
+          <motion.span
+            key={urgency ? "urgent" : "calm"}
+            animate={urgency ? { scale: [1, 1.08, 1] } : { scale: 1 }}
+            transition={{ repeat: urgency ? Infinity : 0, duration: 0.7 }}
+            className={`font-display text-3xl font-extrabold tabular-nums ${urgency ? "text-coral" : ""}`}
+          >
+            {(msLeft / 1000).toFixed(1)}
+            <span className="text-lg text-white/40">s</span>
+          </motion.span>
+        </div>
+        <div className="h-2 overflow-hidden rounded-full bg-white/10">
+          <motion.div
+            className={`h-full rounded-full ${urgency ? "bg-coral" : "bg-accent"}`}
+            animate={{ width: `${Math.min(100, (msLeft / TOTAL_MS) * 100)}%` }}
+            transition={{ ease: "linear", duration: 0.2 }}
+          />
         </div>
 
-        <p className="text-sm text-white/70">
-          ¿Qué tema comparte <span className="font-bold text-emerald-300">{from}</span> con otro
-          artista?
+        <p className="font-display text-lg font-bold leading-snug">
+          ¿Qué tema comparte <span className="text-accent">{from}</span> con otro artista?
         </p>
 
-        <div className="rounded-2xl bg-black/30 p-2">
-          <Waveform active={status === "playing"} getAnalyser={getAnalyser} color="#34d399" />
+        <div className="stage">
+          <Waveform active={status === "playing"} getAnalyser={getAnalyser} color="#22e5a0" />
         </div>
 
         {round && (
           <OptionGrid
+            key={round.roundId}
             options={round.options}
             onPick={pick}
             pickedId={picked}
@@ -203,26 +250,10 @@ export default function ChainPage() {
           />
         )}
 
-        <p className="truncate text-xs text-white/40">{links.join(" → ")}</p>
+        {chainView}
 
         <AnimatePresence>
-          {solution && (
-            <motion.div
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              className="flex items-center gap-3"
-            >
-              {solution.artwork && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={solution.artwork} alt="" className="h-12 w-12 rounded-xl" />
-              )}
-              <div className="text-sm">
-                <p className="font-bold">{solution.title}</p>
-                <p className="text-white/60">{solution.artist}</p>
-              </div>
-            </motion.div>
-          )}
+          {solution && <SolutionCard title={solution.title} artist={solution.artist} artwork={solution.artwork} />}
         </AnimatePresence>
       </section>
     </Shell>

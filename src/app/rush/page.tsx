@@ -1,10 +1,17 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion } from "motion/react";
+import { Flame, LoaderCircle, RotateCcw, Upload, Zap } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatedNumber } from "@/components/AnimatedNumber";
+import { CategoryPicker } from "@/components/CategoryPicker";
+import { Leaderboard } from "@/components/Leaderboard";
+import { ModeHeader } from "@/components/ModeHeader";
 import { Shell } from "@/components/Shell";
 import { OptionGrid } from "@/components/OptionGrid";
 import { Waveform } from "@/components/Waveform";
+import { celebrate } from "@/lib/fx";
+import { accentStyle, modeOf } from "@/lib/modes";
 import { answerRound, getCategories, getLeaderboard, getRound, submitScore } from "@/lib/api";
 import { updateProfile } from "@/lib/storage";
 import type { Category, RoundPayload, ScoreEntry } from "@/lib/types";
@@ -18,23 +25,6 @@ const FEVER_WINDOW_MS = 2_000;
 const FEVER_DURATION_MS = 12_000;
 
 type Phase = "setup" | "playing" | "over";
-
-function Leaderboard({ entries }: { entries: ScoreEntry[] }) {
-  if (!entries.length) return null;
-  return (
-    <div className="space-y-1 text-left">
-      <p className="text-xs uppercase tracking-widest text-white/40">Ranking de la semana</p>
-      {entries.slice(0, 5).map((entry, i) => (
-        <div key={`${entry.name}-${entry.at}`} className="flex justify-between text-sm">
-          <span className="text-white/70">
-            {i + 1}. {entry.name}
-          </span>
-          <span className="tabular-nums font-semibold">{entry.score}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 export default function RushPage() {
   const [categories, setCategories] = useState<Category[]>([]);
@@ -156,6 +146,7 @@ export default function RushPage() {
       const nextCombo = quick ? combo + 1 : 0;
       setCombo(nextCombo);
       if (nextCombo >= 3) {
+        if (!fever) celebrate(undefined, true);
         setFever(true);
         if (feverTimer.current) clearTimeout(feverTimer.current);
         feverTimer.current = setTimeout(() => setFever(false), FEVER_DURATION_MS);
@@ -166,6 +157,7 @@ export default function RushPage() {
       setSolved((s) => s + 1);
       deadline.current += BONUS_MS;
       setFlash({ text: `+${points} · +4s · ${res.solution.title}`, good: true });
+      celebrate();
       stop();
       await nextRound();
     } else {
@@ -177,37 +169,24 @@ export default function RushPage() {
     setTimeout(() => setFlash(null), 900);
   }
 
+  const accent = accentStyle(modeOf("rush").color);
+
   if (phase === "setup") {
     return (
-      <Shell>
-        <section className="card space-y-4 p-5">
-          <h1 className="text-2xl font-black">⏱️ Modo Rush</h1>
-          <p className="text-sm text-white/60">
-            45 segundos en el reloj global. Cada acierto suma 4 segundos, cada error resta 6 y
-            descarta esa opción. Tres aciertos seguidos en menos de 2 segundos activan el modo
-            Fiebre (x2 puntos).
-          </p>
-          <div>
-            <p className="mb-2 text-xs uppercase tracking-widest text-white/40">Categoría</p>
-            <div className="flex flex-wrap gap-2">
-              {categories.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => setCategoryId(c.id)}
-                  className={`rounded-full border px-4 py-2 text-sm transition ${
-                    c.id === categoryId
-                      ? "border-fuchsia-400/70 bg-fuchsia-500/20"
-                      : "border-white/12 bg-white/5 hover:bg-white/10"
-                  }`}
-                >
-                  {c.emoji} {c.name}
-                </button>
-              ))}
-            </div>
-          </div>
-          {best > 0 && <p className="text-sm text-amber-200">Tu récord: {best} puntos</p>}
-          <button type="button" className="btn-primary w-full" onClick={start}>
+      <Shell style={accent}>
+        <ModeHeader id="rush">
+          45 segundos en el reloj. Cada acierto suma 4 segundos, cada error resta 6 y descarta esa opción. Tres
+          aciertos seguidos en menos de 2 segundos activan el modo Fiebre (x2 puntos).
+        </ModeHeader>
+        <section className="card space-y-5 p-5 sm:p-6">
+          <CategoryPicker categories={categories} value={categoryId} onChange={setCategoryId} />
+          {best > 0 && (
+            <p className="pill">
+              <Zap size={14} strokeWidth={2.6} />
+              Tu récord: {best} puntos
+            </p>
+          )}
+          <button type="button" className="btn-accent w-full text-lg" onClick={start}>
             Arrancar
           </button>
           <Leaderboard entries={top} />
@@ -218,15 +197,22 @@ export default function RushPage() {
 
   if (phase === "over") {
     return (
-      <Shell>
-        <section className="card space-y-4 p-6 text-center">
-          <p className="text-xs uppercase tracking-widest text-white/40">Se acabó el tiempo</p>
-          <p className="text-5xl font-black text-fuchsia-300">{score}</p>
-          <p className="text-white/60">{solved} canciones adivinadas · récord {best}</p>
+      <Shell style={accent}>
+        <motion.section
+          initial={{ opacity: 0, scale: 0.94 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ type: "spring", stiffness: 260, damping: 20 }}
+          className="card space-y-5 p-6 text-center"
+        >
+          <p className="eyebrow">Se acabó el tiempo</p>
+          <AnimatedNumber value={score} className="font-display text-7xl font-extrabold text-accent" />
+          <p className="text-white/60">
+            {solved} canciones adivinadas · récord {best}
+          </p>
           {submitted ? (
-            <p className="text-sm text-lime-300">
+            <motion.p initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="pill mx-auto" style={accentStyle("#c8ff2e")}>
               {rank ? `Entraste #${rank} en el ranking semanal` : "Esta vez no entraste al top 50"}
-            </p>
+            </motion.p>
           ) : (
             <div className="flex gap-2">
               <input
@@ -234,7 +220,7 @@ export default function RushPage() {
                 onChange={(e) => setTypedName(e.target.value)}
                 placeholder="Tu apodo"
                 maxLength={16}
-                className="min-w-0 flex-1 rounded-2xl border border-white/12 bg-white/5 px-4 py-3 outline-none placeholder:text-white/30 focus:border-fuchsia-400/60"
+                className="field min-w-0 flex-1 py-3"
               />
               <button
                 type="button"
@@ -257,67 +243,103 @@ export default function RushPage() {
                   setSubmitted(true);
                 }}
               >
+                <Upload size={17} strokeWidth={2.6} />
                 Subir
               </button>
             </div>
           )}
           <Leaderboard entries={top} />
-          <button type="button" className="btn-primary w-full" onClick={start}>
+          <button type="button" className="btn-accent w-full" onClick={start}>
+            <RotateCcw size={18} strokeWidth={2.6} />
             Revancha
           </button>
-        </section>
+        </motion.section>
       </Shell>
     );
   }
 
   const urgency = timeLeft < 10_000;
+  const timePct = Math.min(100, (timeLeft / START_MS) * 100);
 
   return (
-    <Shell>
-      <section className={`card space-y-4 p-5 ${fever ? "ring-2 ring-amber-400/60" : ""}`}>
-        <div className="flex items-baseline justify-between">
+    <Shell style={fever ? accentStyle("#ffd23f") : accent}>
+      <motion.section
+        animate={fever ? { boxShadow: ["0 0 0px 0px rgba(255,210,63,0)", "0 0 50px 4px rgba(255,210,63,0.35)", "0 0 0px 0px rgba(255,210,63,0)"] } : { boxShadow: "0 0 0px 0px rgba(0,0,0,0)" }}
+        transition={fever ? { repeat: Infinity, duration: 1.2 } : { duration: 0.3 }}
+        className={`card space-y-4 p-5 sm:p-6 ${fever ? "border-yellow/60" : ""}`}
+      >
+        <div className="flex items-end justify-between">
           <motion.span
             key={urgency ? "urgent" : "calm"}
-            animate={urgency ? { scale: [1, 1.06, 1] } : { scale: 1 }}
-            transition={{ repeat: urgency ? Infinity : 0, duration: 0.8 }}
-            className={`text-4xl font-black tabular-nums ${urgency ? "text-rose-400" : ""}`}
+            animate={urgency ? { scale: [1, 1.08, 1] } : { scale: 1 }}
+            transition={{ repeat: urgency ? Infinity : 0, duration: 0.7 }}
+            className={`font-display text-5xl font-extrabold tabular-nums ${urgency ? "text-coral" : ""}`}
           >
-            {(timeLeft / 1000).toFixed(1)}s
+            {(timeLeft / 1000).toFixed(1)}
+            <span className="text-2xl text-white/40">s</span>
           </motion.span>
           <div className="text-right">
-            <p className="text-2xl font-bold tabular-nums">{score}</p>
-            <p className="text-xs uppercase tracking-widest text-white/40">
-              {fever ? "🔥 Fiebre x2" : `Combo ${combo}`}
-            </p>
+            <AnimatedNumber value={score} className="font-display text-3xl font-extrabold" />
+            <AnimatePresence mode="popLayout">
+              <motion.p
+                key={fever ? "fever" : `combo-${combo}`}
+                initial={{ y: 10, opacity: 0, scale: 0.8 }}
+                animate={{ y: 0, opacity: 1, scale: 1 }}
+                exit={{ y: -10, opacity: 0 }}
+                transition={{ type: "spring", stiffness: 500, damping: 20 }}
+                className={`flex items-center justify-end gap-1 text-xs font-extrabold uppercase tracking-widest ${
+                  fever ? "text-yellow" : combo > 0 ? "text-accent" : "text-white/40"
+                }`}
+              >
+                {fever ? (
+                  <>
+                    <Flame size={14} strokeWidth={2.8} /> Fiebre x2
+                  </>
+                ) : (
+                  <>
+                    <Zap size={13} strokeWidth={2.8} /> Combo {combo}
+                  </>
+                )}
+              </motion.p>
+            </AnimatePresence>
           </div>
         </div>
 
-        <div className="rounded-2xl bg-black/30 p-2">
-          <Waveform active={status === "playing"} getAnalyser={getAnalyser} color={fever ? "#fbbf24" : "#c084fc"} />
+        <div className="h-2 overflow-hidden rounded-full bg-white/10">
+          <motion.div
+            className={`h-full rounded-full ${urgency ? "bg-coral" : "bg-accent"}`}
+            animate={{ width: `${timePct}%` }}
+            transition={{ ease: "linear", duration: 0.1 }}
+          />
+        </div>
+
+        <div className="stage relative">
+          <Waveform active={status === "playing"} getAnalyser={getAnalyser} color={fever ? "#ffd23f" : "#ff8a1f"} />
+          <AnimatePresence>
+            {flash && (
+              <motion.p
+                initial={{ opacity: 0, y: 14, scale: 0.8 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -14 }}
+                transition={{ type: "spring", stiffness: 500, damping: 22 }}
+                className={`absolute inset-x-2 top-1/2 -translate-y-1/2 truncate rounded-xl px-3 py-2 text-center font-display text-lg font-extrabold shadow-xl ${
+                  flash.good ? "bg-lime text-ink" : "bg-coral text-ink"
+                }`}
+              >
+                {flash.text}
+              </motion.p>
+            )}
+          </AnimatePresence>
         </div>
         {(status === "loading" || status === "error") && (
-          <p className="text-center text-xs uppercase tracking-widest text-white/40">
+          <p className="flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-widest text-white/45">
+            <LoaderCircle size={14} className="animate-spin" />
             Cargando audio · reloj en pausa
           </p>
         )}
 
-        <AnimatePresence>
-          {flash && (
-            <motion.p
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              className={`text-center text-lg font-bold ${flash.good ? "text-lime-300" : "text-rose-300"}`}
-            >
-              {flash.text}
-            </motion.p>
-          )}
-        </AnimatePresence>
-
-        {round && (
-          <OptionGrid options={round.options} onPick={pick} disabledIds={discarded} />
-        )}
-      </section>
+        {round && <OptionGrid key={round.roundId} options={round.options} onPick={pick} disabledIds={discarded} />}
+      </motion.section>
     </Shell>
   );
 }

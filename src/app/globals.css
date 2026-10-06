@@ -1,54 +1,276 @@
 @import "tailwindcss";
 
 :root {
-  --background: #07060f;
-  --foreground: #f4f2ff;
+  --ink: #0b0a12;
+  --surface: #15131f;
+  --surface-2: #1f1c2c;
+  --line: rgba(255, 255, 255, 0.08);
+  --text: #f6f4ff;
+  --muted: rgba(246, 244, 255, 0.58);
+  --lime: #c8ff2e;
+  --pink: #ff3d8b;
+  --sky: #3db8ff;
+  --orange: #ff8a1f;
+  --mint: #22e5a0;
+  --violet: #8c6cff;
+  --yellow: #ffd23f;
+  --coral: #ff5e5b;
+  --accent: var(--lime);
+  --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-neon: #a855f7;
-  --color-neon-soft: #c084fc;
-  --color-lime: #a3e635;
-  --color-coral: #fb7185;
-  --font-sans: ui-sans-serif, system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --color-ink: var(--ink);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-lime: var(--lime);
+  --color-pink: var(--pink);
+  --color-sky: var(--sky);
+  --color-orange: var(--orange);
+  --color-mint: var(--mint);
+  --color-violet: var(--violet);
+  --color-yellow: var(--yellow);
+  --color-coral: var(--coral);
+  --color-accent: var(--accent);
+  --font-sans: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-display-face), var(--font-body), ui-sans-serif, system-ui, sans-serif;
+}
+
+html {
+  background: var(--ink);
 }
 
 body {
-  background:
-    radial-gradient(1000px 600px at 12% -10%, rgba(168, 85, 247, 0.28), transparent 60%),
-    radial-gradient(900px 600px at 95% 0%, rgba(56, 189, 248, 0.18), transparent 55%),
-    var(--background);
-  background-attachment: fixed;
-  color: var(--foreground);
+  color: var(--text);
   font-family: var(--font-sans);
   -webkit-tap-highlight-color: transparent;
+  overflow-x: hidden;
+}
+
+/* Slow drifting color blobs: alive without stealing attention. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: -20vmax;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(30vmax 30vmax at 15% 10%, rgba(200, 255, 46, 0.13), transparent 70%),
+    radial-gradient(34vmax 34vmax at 90% 15%, rgba(255, 61, 139, 0.16), transparent 70%),
+    radial-gradient(38vmax 38vmax at 60% 95%, rgba(61, 184, 255, 0.13), transparent 70%);
+  animation: drift 28s ease-in-out infinite alternate;
+}
+
+@keyframes drift {
+  0% { transform: translate3d(0, 0, 0) rotate(0deg); }
+  50% { transform: translate3d(-4vmax, 3vmax, 0) rotate(8deg); }
+  100% { transform: translate3d(3vmax, -2vmax, 0) rotate(-6deg); }
+}
+
+@keyframes eq {
+  0%, 100% { transform: scaleY(0.35); }
+  50% { transform: scaleY(1); }
+}
+
+@keyframes ring {
+  0% { transform: scale(1); opacity: 0.55; }
+  100% { transform: scale(1.7); opacity: 0; }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
 }
 
 @layer components {
-  .card {
-    @apply rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl shadow-[0_8px_40px_-12px_rgba(0,0,0,0.8)];
+  .font-display {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
   }
 
-  .btn {
-    @apply rounded-2xl px-5 py-3 font-semibold transition active:scale-[0.98] disabled:opacity-40 disabled:active:scale-100;
+  .card {
+    position: relative;
+    border-radius: 28px;
+    border: 1px solid var(--line);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.015)), var(--surface);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 24px 60px -30px rgba(0, 0, 0, 0.9);
+  }
+
+  .eyebrow {
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .btn-primary,
+  .btn-ghost,
+  .btn-accent {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: 18px;
+    padding: 0.9rem 1.25rem;
+    font-family: var(--font-display);
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    user-select: none;
+    transition:
+      transform 0.25s var(--spring),
+      box-shadow 0.25s var(--spring),
+      filter 0.2s,
+      background-color 0.2s;
   }
 
   .btn-primary {
-    @apply rounded-2xl px-5 py-3 font-semibold transition active:scale-[0.98] disabled:opacity-40 disabled:active:scale-100 bg-gradient-to-r from-fuchsia-500 to-violet-500 text-white shadow-lg shadow-fuchsia-500/25 hover:brightness-110;
+    background: var(--lime);
+    color: var(--ink);
+    box-shadow: 0 5px 0 #7aa300, 0 12px 30px -10px rgba(200, 255, 46, 0.55);
+  }
+
+  .btn-accent {
+    background: var(--accent);
+    color: var(--ink);
+    box-shadow: 0 5px 0 color-mix(in oklab, var(--accent) 55%, black), 0 12px 30px -12px color-mix(in oklab, var(--accent) 60%, transparent);
   }
 
   .btn-ghost {
-    @apply rounded-2xl px-5 py-3 font-semibold transition active:scale-[0.98] disabled:opacity-40 disabled:active:scale-100 border border-white/15 bg-white/5 text-white/90 hover:bg-white/10;
+    background: var(--surface-2);
+    color: var(--text);
+    border: 1px solid var(--line);
+    box-shadow: 0 4px 0 rgba(0, 0, 0, 0.55);
+  }
+
+  .btn-primary:hover:not(:disabled),
+  .btn-accent:hover:not(:disabled),
+  .btn-ghost:hover:not(:disabled) {
+    transform: translateY(-2px);
+    filter: brightness(1.08);
+  }
+
+  .btn-primary:active:not(:disabled),
+  .btn-accent:active:not(:disabled),
+  .btn-ghost:active:not(:disabled) {
+    transform: translateY(4px) scale(0.99);
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
+    transition-duration: 0.06s;
+  }
+
+  .btn-primary:disabled,
+  .btn-accent:disabled,
+  .btn-ghost:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .chip {
+    position: relative;
+    border-radius: 999px;
+    padding: 0.55rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: var(--muted);
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--line);
+    transition: color 0.2s, transform 0.25s var(--spring), border-color 0.2s;
+  }
+
+  .chip:hover {
+    color: var(--text);
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+
+  .chip:active {
+    transform: scale(0.94);
+  }
+
+  .chip[data-active="true"] {
+    color: var(--ink);
+    border-color: transparent;
+  }
+
+  .field {
+    width: 100%;
+    border-radius: 18px;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.04);
+    padding: 1rem 1.1rem;
+    font-weight: 600;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s, background-color 0.2s;
+  }
+
+  .field::placeholder {
+    color: rgba(246, 244, 255, 0.3);
+  }
+
+  .field:focus {
+    border-color: var(--accent);
+    background: rgba(255, 255, 255, 0.06);
+    box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent) 22%, transparent);
+  }
+
+  .stage {
+    border-radius: 22px;
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid var(--line);
+    padding: 0.5rem;
+  }
+
+  .tile {
+    display: grid;
+    place-items: center;
+    border-radius: 16px;
+    color: var(--accent);
+    background: color-mix(in oklab, var(--accent) 16%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent) 30%, transparent) inset;
+  }
+
+  .text-accent {
+    color: var(--accent);
+  }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    border-radius: 999px;
+    padding: 0.35rem 0.8rem;
+    font-size: 0.8rem;
+    font-weight: 800;
+    color: var(--accent);
+    background: color-mix(in oklab, var(--accent) 14%, transparent);
+  }
+
+  .skeleton {
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.04));
+    background-size: 200% 100%;
+    animation: shimmer 1.4s linear infinite;
   }
 }
 
 ::selection {
-  background: rgba(168, 85, 247, 0.4);
+  background: rgba(200, 255, 46, 0.35);
+  color: #fff;
 }
 
 input,
 button {
   font-family: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

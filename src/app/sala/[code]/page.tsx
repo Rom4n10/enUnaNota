@@ -1,11 +1,40 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion } from "motion/react";
+import {
+  BellRing,
+  Check,
+  Coins,
+  Crown,
+  Dices,
+  DoorOpen,
+  Flame,
+  Gavel,
+  HandMetal,
+  Heart,
+  Laugh,
+  LoaderCircle,
+  LogOut,
+  MicOff,
+  RotateCcw,
+  Settings2,
+  Share2,
+  Sparkles,
+  ThumbsUp,
+  X,
+  Zap,
+  type LucideIcon,
+} from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { AnimatedNumber } from "@/components/AnimatedNumber";
+import { CategoryPicker } from "@/components/CategoryPicker";
 import { Shell } from "@/components/Shell";
 import { OptionGrid } from "@/components/OptionGrid";
+import { SolutionCard } from "@/components/SolutionCard";
 import { Waveform } from "@/components/Waveform";
+import { buzz as buzzFx, celebrate, fail, tick } from "@/lib/fx";
+import { accentStyle, modeOf } from "@/lib/modes";
 import { getCategories } from "@/lib/api";
 import { getSocket, serverNow, socketIdSnapshot, subscribeSocketId, syncClock } from "@/lib/socket";
 import { shareText } from "@/lib/share";
@@ -26,12 +55,28 @@ import type {
 import { usePreviewPlayer } from "@/lib/useAudio";
 import { useProfile } from "@/lib/useProfile";
 
-const CHAOS_LABEL: Record<string, string> = {
-  double: "🎲 Doble o Nada · puntos x2",
-  short: "🤫 Sin Voces · solo 2 segundos",
+const CHAOS: Record<string, { label: string; icon: LucideIcon }> = {
+  double: { label: "Doble o Nada · puntos x2", icon: Dices },
+  short: { label: "Sin Voces · solo 2 segundos", icon: MicOff },
 };
 
-const REACTIONS = ["🔥", "😂", "😱", "👏", "🫠"];
+/** Reaction ids travel over the socket (max 4 chars); the icon is resolved client-side. */
+const REACTIONS: { id: string; icon: LucideIcon; color: string }[] = [
+  { id: "fire", icon: Flame, color: "#ff8a1f" },
+  { id: "lol", icon: Laugh, color: "#ffd23f" },
+  { id: "wow", icon: Sparkles, color: "#3db8ff" },
+  { id: "rock", icon: HandMetal, color: "#c8ff2e" },
+  { id: "clap", icon: ThumbsUp, color: "#22e5a0" },
+  { id: "love", icon: Heart, color: "#ff3d8b" },
+];
+
+const ROOM_MODES: { id: RoomMode; title: string; detail: string; icon: LucideIcon; color: string }[] = [
+  { id: "classic", title: "Clásico", detail: "Todos responden, gana la velocidad", icon: Zap, color: "#c8ff2e" },
+  { id: "buzzer", title: "Buzzer", detail: "El primero que aprieta corta el tema", icon: BellRing, color: "#ff3d8b" },
+  { id: "auction", title: "Subasta", detail: "Apostás segundos: el más audaz escucha", icon: Gavel, color: "#ffd23f" },
+];
+
+const PODIUM = ["bg-yellow text-ink", "bg-white/85 text-ink", "bg-orange text-ink"];
 
 const INVITE_MODE: Record<RoomMode, string> = {
   classic: "⚡ Modo Clásico: gana el más rápido",
@@ -73,6 +118,7 @@ export default function RoomPage() {
   const [reactions, setReactions] = useState<Reaction[]>([]);
   const reactionTimers = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
   const selfId = useSyncExternalStore(subscribeSocketId, socketIdSnapshot, () => null);
+  const roundMode = useRef<RoomMode>("classic");
 
   const { status, playClip, stop, getAnalyser } = usePreviewPlayer(round?.audioUrl ?? null);
 
@@ -103,6 +149,7 @@ export default function RoomPage() {
       setClosed(true);
     };
     const onRoundStart = (payload: RoundStart) => {
+      roundMode.current = payload.mode;
       setRound(payload);
       setResult(null);
       setPicked(null);
@@ -133,6 +180,9 @@ export default function RoomPage() {
       setAuctionResult(payload);
     };
     const onRoundEnd = (payload: RoundEnd) => {
+      const mine = payload.results.find((r) => r.id === socket.id);
+      if (mine && (mine.correct || mine.points > 0)) celebrate(undefined, mine.correct);
+      else if (mine && mine.ms !== null && roundMode.current !== "buzzer") fail();
       stop();
       setResult(payload);
       setRound(null);
@@ -140,12 +190,14 @@ export default function RoomPage() {
       setPlayback(null);
     };
     const onBuzzLock = (payload: BuzzLock) => {
+      buzzFx();
       stop();
       setPlayback(null);
       setBuzz(payload);
       setPicked(null);
     };
     const onBuzzResume = (payload: BuzzResume) => {
+      if (payload.reason === "wrong" && payload.playerId === socket.id) fail();
       setBuzz(null);
       setBlocked(payload.blocked);
       setPlayback({ at: payload.resumeAt, offsetMs: payload.offsetMs, clipMs: null });
@@ -264,6 +316,7 @@ export default function RoomPage() {
   }
 
   function placeBid(seconds: number) {
+    tick();
     getSocket().emit("bid", { seconds }, (res: { ok: boolean }) => {
       if (res?.ok) setMyBid(seconds);
     });
@@ -299,134 +352,164 @@ export default function RoomPage() {
   const rematchVotes = state?.rematchVotes ?? [];
   const votedRematch = Boolean(selfId && rematchVotes.includes(selfId));
 
+  const accent = accentStyle(modeOf("sala").color);
+  const roomMode = ROOM_MODES.find((m) => m.id === (round?.mode ?? state?.mode)) ?? ROOM_MODES[0];
+
   if (closed) {
     return (
-      <Shell>
-        <section className="card space-y-4 p-6 text-center">
-          <p className="text-4xl">🚪</p>
-          <p className="text-lg font-bold">El anfitrión cerró la sala</p>
-          <button type="button" className="btn-primary w-full" onClick={() => router.push("/sala")}>
+      <Shell style={accent}>
+        <motion.section
+          initial={{ opacity: 0, scale: 0.94 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="card space-y-4 p-6 text-center"
+        >
+          <span className="tile mx-auto h-16 w-16">
+            <DoorOpen size={30} strokeWidth={2.4} />
+          </span>
+          <p className="font-display text-2xl font-extrabold">El anfitrión cerró la sala</p>
+          <button type="button" className="btn-accent w-full" onClick={() => router.push("/sala")}>
             Crear o unirme a otra sala
           </button>
-        </section>
+        </motion.section>
       </Shell>
     );
   }
 
   if (!joined) {
     return (
-      <Shell>
-        <section className="card space-y-4 p-5">
-          <p className="text-xs uppercase tracking-widest text-white/40">Sala</p>
-          <p className="text-4xl font-black tracking-[0.3em]">{code}</p>
+      <Shell style={accent}>
+        <section className="card space-y-4 p-5 sm:p-6">
+          <p className="eyebrow">Te invitaron a la sala</p>
+          <p className="font-display text-6xl font-extrabold tracking-[0.25em] text-accent">{code}</p>
           <input
             value={nickname}
             onChange={(e) => setTypedNickname(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && join()}
             maxLength={16}
             placeholder="Tu apodo"
-            className="w-full rounded-2xl border border-white/12 bg-white/5 px-4 py-4 outline-none placeholder:text-white/30 focus:border-fuchsia-400/60"
+            className="field"
           />
-          <button type="button" className="btn-primary w-full" onClick={join}>
+          <button type="button" className="btn-accent w-full text-lg" onClick={join}>
             Entrar a la sala
           </button>
-          {error && <p className="text-sm text-rose-300">{error}</p>}
+          {error && <p className="text-sm font-semibold text-coral">{error}</p>}
         </section>
       </Shell>
     );
   }
 
   return (
-    <Shell>
-      <section className="card flex items-center justify-between gap-3 p-4">
+    <Shell style={accent}>
+      <section className="card flex flex-wrap items-center justify-between gap-3 p-4 sm:p-5">
         <div>
-          <p className="text-xs uppercase tracking-widest text-white/40">Código</p>
-          <p className="text-3xl font-black tracking-[0.3em]">{code}</p>
+          <p className="eyebrow">Código de sala</p>
+          <p className="font-display text-4xl font-extrabold tracking-[0.25em] text-accent">{code}</p>
         </div>
         <div className="flex gap-2">
-          <button type="button" className="btn-ghost" onClick={shareLink}>
-            {copied ? "¡Copiado!" : "Compartir link"}
+          <button type="button" className="btn-ghost px-4" onClick={shareLink}>
+            {copied ? <Check size={18} strokeWidth={2.8} /> : <Share2 size={18} strokeWidth={2.4} />}
+            {copied ? "¡Copiado!" : "Invitar"}
           </button>
-          <button type="button" className="btn-ghost text-rose-200" onClick={leave}>
-            Salir
+          <button type="button" className="btn-ghost px-4 text-coral" onClick={leave} aria-label="Salir de la sala">
+            <LogOut size={18} strokeWidth={2.4} />
+            <span className="hidden sm:inline">Salir</span>
           </button>
         </div>
       </section>
 
       {state?.status === "lobby" && (
-        <section className="card space-y-4 p-5">
-          <p className="text-sm text-white/60">
-            {state.players.length} en la sala. Esperando que el anfitrión arranque.
-          </p>
+        <section className="card space-y-5 p-5 sm:p-6">
+          <div className="flex items-center gap-3">
+            <span className="relative flex h-3 w-3">
+              <span className="absolute inset-0 rounded-full bg-accent" style={{ animation: "ring 1.4s ease-out infinite" }} />
+              <span className="relative h-3 w-3 rounded-full bg-accent" />
+            </span>
+            <p className="text-sm font-semibold text-white/70">
+              {state.players.length} en la sala ·{" "}
+              {isHost ? "elegí el modo y arrancá" : "esperando que el anfitrión arranque"}
+            </p>
+          </div>
+          {!isHost && (
+            <div className="flex items-center gap-3 rounded-2xl bg-white/[0.04] p-3" style={accentStyle(roomMode.color)}>
+              <span className="tile h-10 w-10">
+                <roomMode.icon size={20} strokeWidth={2.4} />
+              </span>
+              <div>
+                <p className="font-display font-bold">Modo {roomMode.title}</p>
+                <p className="text-xs text-white/55">{roomMode.detail}</p>
+              </div>
+            </div>
+          )}
           {isHost && (
             <>
-              <div className="flex flex-wrap gap-2">
-                {categories.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => getSocket().emit("set_config", { categoryId: c.id })}
-                    className={`rounded-full border px-4 py-2 text-sm transition ${
-                      c.id === state.categoryId
-                        ? "border-fuchsia-400/70 bg-fuchsia-500/20"
-                        : "border-white/12 bg-white/5 hover:bg-white/10"
-                    }`}
-                  >
-                    {c.emoji} {c.name}
-                  </button>
-                ))}
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                {(["classic", "buzzer", "auction"] as const).map((m) => (
-                  <button
-                    key={m}
-                    type="button"
-                    onClick={() => getSocket().emit("set_config", { mode: m })}
-                    className={`rounded-2xl border px-4 py-3 text-left text-sm transition ${
-                      state.mode === m
-                        ? "border-fuchsia-400/70 bg-fuchsia-500/20"
-                        : "border-white/12 bg-white/5 hover:bg-white/10"
-                    }`}
-                  >
-                    <span className="block font-bold">
-                      {m === "classic" ? "⚡ Clásico" : m === "buzzer" ? "🔔 Buzzer" : "💰 Subasta"}
-                    </span>
-                    <span className="block text-xs text-white/50">
-                      {m === "classic"
-                        ? "Todos responden, gana la velocidad"
-                        : m === "buzzer"
-                          ? "El primero que aprieta corta el tema"
-                          : "Apostás segundos: el más audaz escucha"}
-                    </span>
-                  </button>
-                ))}
+              <CategoryPicker
+                categories={categories}
+                value={state.categoryId}
+                onChange={(id) => getSocket().emit("set_config", { categoryId: id })}
+              />
+              <div className="space-y-2.5">
+                <p className="eyebrow">Modo</p>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {ROOM_MODES.map((m) => {
+                    const active = state.mode === m.id;
+                    return (
+                      <motion.button
+                        key={m.id}
+                        type="button"
+                        whileHover={{ y: -2 }}
+                        whileTap={{ scale: 0.96 }}
+                        onClick={() => getSocket().emit("set_config", { mode: m.id })}
+                        style={accentStyle(m.color)}
+                        className={`flex items-center gap-3 rounded-2xl border p-3 text-left transition-colors sm:flex-col sm:items-start ${
+                          active ? "border-accent bg-accent/10" : "border-white/10 bg-surface-2 hover:border-white/25"
+                        }`}
+                      >
+                        <motion.span
+                          animate={active ? { rotate: [0, -12, 12, 0], scale: [1, 1.15, 1] } : { rotate: 0, scale: 1 }}
+                          transition={{ duration: 0.5 }}
+                          className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${active ? "bg-accent text-ink" : "tile"}`}
+                        >
+                          <m.icon size={20} strokeWidth={2.4} />
+                        </motion.span>
+                        <span>
+                          <span className="block font-display font-extrabold">{m.title}</span>
+                          <span className="block text-xs text-white/55">{m.detail}</span>
+                        </span>
+                      </motion.button>
+                    );
+                  })}
+                </div>
               </div>
               <label
-                className={`flex items-center gap-3 text-sm text-white/70 ${
-                  state.mode !== "classic" ? "opacity-40" : ""
+                className={`flex cursor-pointer items-center justify-between gap-3 rounded-2xl bg-white/[0.04] p-3 text-sm font-semibold text-white/75 ${
+                  state.mode !== "classic" ? "pointer-events-none opacity-40" : ""
                 }`}
               >
+                <span className="flex items-center gap-2">
+                  <Dices size={18} strokeWidth={2.4} className="text-accent" />
+                  Ruleta de caos (Doble o Nada / Sin Voces)
+                </span>
                 <input
                   type="checkbox"
                   disabled={state.mode !== "classic"}
                   checked={state.chaosEnabled}
-                  onChange={(e) =>
-                    getSocket().emit("set_config", { chaosEnabled: e.target.checked })
-                  }
-                  className="h-5 w-5 accent-fuchsia-500"
+                  onChange={(e) => getSocket().emit("set_config", { chaosEnabled: e.target.checked })}
+                  className="peer sr-only"
                 />
-                Ruleta de caos (Doble o Nada / Sin Voces)
+                <span className="relative h-7 w-12 shrink-0 rounded-full bg-white/15 transition-colors peer-checked:bg-accent">
+                  <motion.span
+                    layout
+                    transition={{ type: "spring", stiffness: 600, damping: 30 }}
+                    className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow ${state.chaosEnabled ? "right-1" : "left-1"}`}
+                  />
+                </span>
               </label>
-              <button
-                type="button"
-                className="btn-primary w-full"
-                onClick={() => getSocket().emit("start_game")}
-              >
+              <button type="button" className="btn-accent w-full text-lg" onClick={() => getSocket().emit("start_game")}>
                 Arrancar {state.totalRounds} rondas
               </button>
               <button
                 type="button"
-                className="w-full text-center text-sm text-rose-300/80 hover:text-rose-200"
+                className="w-full text-center text-sm font-semibold text-coral/80 transition hover:text-coral"
                 onClick={closeRoom}
               >
                 Cerrar sala
@@ -437,84 +520,125 @@ export default function RoomPage() {
       )}
 
       {auction && (
-        <section className="card space-y-4 p-5">
-          <div className="flex items-center justify-between text-xs uppercase tracking-widest text-white/40">
-            <span>
+        <motion.section
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="card space-y-4 p-5 sm:p-6"
+          style={accentStyle("#ffd23f")}
+        >
+          <div className="flex items-center justify-between">
+            <span className="eyebrow">
               Ronda {auction.roundIndex + 1} / {auction.totalRounds}
             </span>
-            <span className="tabular-nums">{(bidLeft / 1000).toFixed(1)}s</span>
+            <span className={`font-display text-2xl font-extrabold tabular-nums ${bidLeft < 4000 ? "text-coral" : ""}`}>
+              {(bidLeft / 1000).toFixed(1)}s
+            </span>
           </div>
-          <p className="rounded-2xl bg-amber-400/10 px-4 py-3 text-center text-sm text-amber-100">
-            💰 {auction.hint}
+          <p className="flex items-start gap-2 rounded-2xl bg-accent/10 px-4 py-3 text-sm font-semibold text-accent">
+            <Coins size={18} strokeWidth={2.4} className="mt-0.5 shrink-0" />
+            {auction.hint}
           </p>
           <p className="text-center text-sm text-white/60">
             ¿En cuántos segundos la sacás? La apuesta más baja se lleva el turno.
           </p>
-          <div className="grid grid-cols-6 gap-2">
-            {Array.from({ length: auction.maxBid - auction.minBid + 1 }, (_, i) => auction.minBid + i).map(
-              (s) => (
-                <button
-                  key={s}
-                  type="button"
-                  disabled={myBid !== null && s >= myBid}
-                  onClick={() => placeBid(s)}
-                  className={`rounded-2xl border py-3 text-lg font-black transition disabled:opacity-30 ${
-                    myBid === s
-                      ? "border-amber-400/70 bg-amber-500/25"
-                      : "border-white/12 bg-white/5 hover:bg-white/10"
-                  }`}
-                >
-                  {s}
-                </button>
-              ),
-            )}
+          <div className="grid grid-cols-5 gap-2 sm:grid-cols-6">
+            {Array.from({ length: auction.maxBid - auction.minBid + 1 }, (_, i) => auction.minBid + i).map((s) => (
+              <motion.button
+                key={s}
+                type="button"
+                whileTap={{ scale: 0.88 }}
+                disabled={myBid !== null && s >= myBid}
+                onClick={() => placeBid(s)}
+                className={`rounded-2xl border py-3 font-display text-xl font-extrabold shadow-[0_4px_0_rgba(0,0,0,0.5)] transition-colors disabled:opacity-25 ${
+                  myBid === s ? "border-accent bg-accent text-ink" : "border-white/10 bg-surface-2 hover:border-accent/70"
+                }`}
+              >
+                {s}
+              </motion.button>
+            ))}
           </div>
-          <ul className="space-y-1 text-sm">
-            {[...bids]
-              .sort((a, b) => a.seconds - b.seconds)
-              .map((b) => (
-                <li key={b.playerId} className="flex justify-between text-white/70">
-                  <span>{b.name}</span>
-                  <span className="tabular-nums">{b.seconds}s</span>
-                </li>
-              ))}
+          <ul className="space-y-1.5 text-sm">
+            <AnimatePresence>
+              {[...bids]
+                .sort((a, b) => a.seconds - b.seconds)
+                .map((b, i) => (
+                  <motion.li
+                    layout
+                    key={b.playerId}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    className={`flex items-center justify-between rounded-xl px-3 py-2 ${i === 0 ? "bg-accent/15 text-accent" : "bg-white/[0.04] text-white/70"}`}
+                  >
+                    <span className="font-semibold">{b.name}</span>
+                    <span className="font-display font-extrabold tabular-nums">{b.seconds}s</span>
+                  </motion.li>
+                ))}
+            </AnimatePresence>
           </ul>
-        </section>
+        </motion.section>
       )}
 
       {auctionResult && !round && !auction && (
-        <p className="text-center text-sm text-white/60">
-          {auctionResult.name
-            ? `${auctionResult.name} se la juega en ${auctionResult.seconds}s…`
-            : "Nadie apostó, tema quemado"}
-        </p>
+        <motion.p
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="text-center font-display text-lg font-bold text-white/70"
+        >
+          {auctionResult.name ? `${auctionResult.name} se la juega en ${auctionResult.seconds}s…` : "Nadie apostó, tema quemado"}
+        </motion.p>
       )}
 
       {round && (
-        <section className="card space-y-4 p-5">
-          <div className="flex items-center justify-between text-xs uppercase tracking-widest text-white/40">
-            <span>
+        <motion.section
+          key={round.roundIndex}
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="card space-y-4 p-5 sm:p-6"
+          style={accentStyle(roomMode.color)}
+        >
+          <div className="flex items-center justify-between">
+            <span className="eyebrow">
               Ronda {round.roundIndex + 1} / {round.totalRounds}
             </span>
-            <span className="tabular-nums">
-              {isBuzzer ? "🔔 Buzzer" : isAuction ? `💰 ${round.bidSeconds}s` : `${(countdown / 1000).toFixed(1)}s`}
+            <span className="pill">
+              <roomMode.icon size={14} strokeWidth={2.6} />
+              {isBuzzer ? "Buzzer" : isAuction ? `${round.bidSeconds}s` : `${(countdown / 1000).toFixed(1)}s`}
             </span>
           </div>
-          {round.chaos !== "none" && (
-            <p className="rounded-xl bg-amber-400/15 px-3 py-2 text-center text-sm text-amber-200">
-              {CHAOS_LABEL[round.chaos]}
-            </p>
+          {!isBuzzer && !isAuction && (
+            <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+              <motion.div
+                className={`h-full rounded-full ${countdown < 4000 ? "bg-coral" : "bg-accent"}`}
+                animate={{ width: `${Math.min(100, (countdown / round.answerWindowMs) * 100)}%` }}
+                transition={{ ease: "linear", duration: 0.1 }}
+              />
+            </div>
           )}
-          <div className="rounded-2xl bg-black/30 p-2">
-            <Waveform active={status === "playing"} getAnalyser={getAnalyser} color="#38bdf8" />
+          {round.chaos !== "none" && CHAOS[round.chaos] && (
+            <motion.p
+              initial={{ scale: 0.6, rotate: -4, opacity: 0 }}
+              animate={{ scale: 1, rotate: 0, opacity: 1 }}
+              transition={{ type: "spring", stiffness: 400, damping: 12 }}
+              className="flex items-center justify-center gap-2 rounded-xl bg-yellow px-3 py-2 text-center text-sm font-extrabold text-ink"
+            >
+              {(() => {
+                const ChaosIcon = CHAOS[round.chaos].icon;
+                return <ChaosIcon size={17} strokeWidth={2.6} />;
+              })()}
+              {CHAOS[round.chaos].label}
+            </motion.p>
+          )}
+          <div className="stage">
+            <Waveform active={status === "playing"} getAnalyser={getAnalyser} color={roomMode.color} />
           </div>
           {status === "loading" && (!isAuction || wonAuction) && (
-            <p className="text-center text-xs uppercase tracking-widest text-white/40">
+            <p className="flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-widest text-white/45">
+              <LoaderCircle size={14} className="animate-spin" />
               Cargando audio… te sumás desde donde va el tema
             </p>
           )}
           {status === "error" && (
-            <p className="text-center text-xs text-rose-300">
+            <p className="text-center text-xs font-semibold text-coral">
               No pudimos cargar este tema en tu dispositivo · revisá la conexión
             </p>
           )}
@@ -522,187 +646,242 @@ export default function RoomPage() {
           {isAuction ? (
             wonAuction ? (
               <>
-                <p className="text-center text-sm text-amber-200">
+                <p className="text-center font-display font-bold text-accent">
                   Ganaste la subasta: {round.bidSeconds}s de audio. ¡Dale!
                 </p>
-                <OptionGrid
-                  options={round.options}
-                  onPick={pick}
-                  pickedId={picked}
-                  locked={Boolean(picked)}
-                />
+                <OptionGrid options={round.options} onPick={pick} pickedId={picked} locked={Boolean(picked)} />
               </>
             ) : (
-              <p className="rounded-2xl bg-amber-400/10 py-6 text-center text-lg font-bold text-amber-100">
+              <p className="rounded-2xl bg-accent/10 py-7 text-center font-display text-xl font-bold text-accent">
                 {auctionResult?.name ?? "Alguien"} se la juega en {round.bidSeconds}s…
               </p>
             )
           ) : isBuzzer ? (
             myBuzz ? (
               <>
-                <p className="text-center text-sm text-emerald-300">
+                <motion.p
+                  initial={{ scale: 0.8 }}
+                  animate={{ scale: 1 }}
+                  className="text-center font-display text-lg font-extrabold text-lime"
+                >
                   ¡Apretaste primero! Respondé en {(buzzLeft / 1000).toFixed(1)}s
-                </p>
-                <OptionGrid
-                  options={round.options}
-                  onPick={pick}
-                  pickedId={picked}
-                  locked={Boolean(picked)}
-                />
+                </motion.p>
+                <OptionGrid options={round.options} onPick={pick} pickedId={picked} locked={Boolean(picked)} />
               </>
             ) : buzz ? (
-              <p className="rounded-2xl bg-sky-400/15 py-6 text-center text-lg font-bold text-sky-200">
-                🔔 {buzz.name} está respondiendo…
-              </p>
-            ) : (
-              <motion.button
-                type="button"
-                whileTap={{ scale: 0.94 }}
-                disabled={iAmBlocked}
-                onClick={hitBuzzer}
-                className={`w-full rounded-3xl py-10 text-2xl font-black transition ${
-                  iAmBlocked
-                    ? "cursor-not-allowed bg-white/5 text-white/30"
-                    : "bg-gradient-to-br from-fuchsia-500 to-sky-500 text-white shadow-lg shadow-fuchsia-500/30"
-                }`}
+              <motion.p
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="flex items-center justify-center gap-2 rounded-2xl bg-accent/10 py-7 text-center font-display text-xl font-bold text-accent"
               >
-                {iAmBlocked ? "Fuera de este tema 🙊" : "¡LA SÉ! 🔔"}
-              </motion.button>
+                <BellRing size={22} strokeWidth={2.4} />
+                {buzz.name} está respondiendo…
+              </motion.p>
+            ) : (
+              <div className="grid place-items-center py-2">
+                <motion.button
+                  type="button"
+                  whileHover={iAmBlocked ? undefined : { scale: 1.03 }}
+                  whileTap={iAmBlocked ? undefined : { scale: 0.9, y: 6 }}
+                  disabled={iAmBlocked}
+                  onClick={hitBuzzer}
+                  className={`relative grid aspect-square w-52 place-items-center rounded-full font-display text-3xl font-extrabold sm:w-60 ${
+                    iAmBlocked
+                      ? "cursor-not-allowed bg-white/5 text-white/30"
+                      : "bg-accent text-ink shadow-[0_10px_0_color-mix(in_oklab,var(--accent)_50%,black),0_30px_60px_-15px_var(--accent)]"
+                  }`}
+                >
+                  {!iAmBlocked && (
+                    <span className="absolute inset-0 rounded-full bg-accent" style={{ animation: "ring 1.6s ease-out infinite" }} />
+                  )}
+                  <span className="relative flex flex-col items-center gap-1">
+                    {iAmBlocked ? <X size={40} strokeWidth={2.6} /> : <BellRing size={40} strokeWidth={2.6} />}
+                    {iAmBlocked ? <span className="text-base">Fuera de este tema</span> : "¡LA SÉ!"}
+                  </span>
+                </motion.button>
+              </div>
             )
           ) : (
             <>
               <OptionGrid options={round.options} onPick={pick} pickedId={picked} locked={Boolean(picked)} />
-              {picked && <p className="text-center text-sm text-white/50">Respuesta enviada ⏳</p>}
+              {picked && (
+                <p className="flex items-center justify-center gap-2 text-sm font-semibold text-white/55">
+                  <LoaderCircle size={14} className="animate-spin" />
+                  Respuesta enviada
+                </p>
+              )}
               {answered.length > 0 && (
-                <p className="text-center text-xs text-white/40">Ya respondieron: {answered.join(", ")}</p>
+                <div className="flex flex-wrap justify-center gap-1.5">
+                  <AnimatePresence>
+                    {answered.map((n, i) => (
+                      <motion.span
+                        key={`${n}-${i}`}
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        transition={{ type: "spring", stiffness: 500, damping: 18 }}
+                        className="rounded-full bg-white/8 px-2.5 py-1 text-xs font-bold text-white/60"
+                      >
+                        {n} respondió
+                      </motion.span>
+                    ))}
+                  </AnimatePresence>
+                </div>
               )}
             </>
           )}
 
           <div className="flex justify-center gap-2">
-            {REACTIONS.map((emoji) => (
-              <button
-                key={emoji}
+            {REACTIONS.map((r) => (
+              <motion.button
+                key={r.id}
                 type="button"
-                onClick={() => getSocket().emit("reaction", { emoji })}
-                className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-lg transition hover:bg-white/15"
+                whileHover={{ y: -3 }}
+                whileTap={{ scale: 0.8, rotate: -12 }}
+                aria-label={r.id}
+                onClick={() => getSocket().emit("reaction", { emoji: r.id })}
+                style={{ color: r.color }}
+                className="grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-white/5 transition-colors hover:bg-white/12"
               >
-                {emoji}
-              </button>
+                <r.icon size={20} strokeWidth={2.4} />
+              </motion.button>
             ))}
           </div>
 
-          <div className="flex min-h-8 flex-wrap justify-center gap-2">
+          <div className="pointer-events-none relative h-0">
             <AnimatePresence>
-              {reactions.map((r) => (
-                <motion.span
-                  key={r.id}
-                  initial={{ opacity: 0, y: 12, scale: 0.6 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -16 }}
-                  className="rounded-full bg-white/10 px-3 py-1 text-sm"
-                >
-                  {r.emoji} {r.name}
-                </motion.span>
-              ))}
+              {reactions.map((r, i) => {
+                const meta = REACTIONS.find((x) => x.id === r.emoji);
+                const Icon = meta?.icon;
+                return (
+                  <motion.span
+                    key={r.id}
+                    initial={{ opacity: 0, y: 0, scale: 0.4 }}
+                    animate={{ opacity: [0, 1, 1, 0], y: -180, scale: 1, x: ((i % 3) - 1) * 40 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 2.4, ease: "easeOut" }}
+                    className="absolute bottom-0 left-1/2 flex -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-full bg-surface-2 px-3 py-1.5 text-sm font-bold shadow-xl"
+                    style={{ color: meta?.color }}
+                  >
+                    {Icon ? <Icon size={18} strokeWidth={2.6} /> : r.emoji}
+                    <span className="text-white/80">{r.name}</span>
+                  </motion.span>
+                );
+              })}
             </AnimatePresence>
           </div>
-        </section>
+        </motion.section>
       )}
 
       <AnimatePresence>
         {result && (
           <motion.section
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
+            initial={{ opacity: 0, y: 16, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0 }}
-            className="card space-y-3 p-5"
+            className="card space-y-3 p-5 sm:p-6"
           >
-            <div className="flex items-center gap-3">
-              {result.solution.artwork && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={result.solution.artwork} alt="" className="h-14 w-14 rounded-xl" />
-              )}
-              <div>
-                <p className="font-bold">{result.solution.title}</p>
-                <p className="text-sm text-white/60">{result.solution.artist}</p>
-              </div>
-            </div>
-            <ul className="space-y-1 text-sm">
-              {result.results.map((r) => (
-                <li key={r.id} className="flex justify-between">
-                  <span>
-                    {r.correct ? "✅" : "❌"} {r.name}
+            <SolutionCard title={result.solution.title} artist={result.solution.artist} artwork={result.solution.artwork} />
+            <ul className="space-y-1.5 text-sm">
+              {result.results.map((r, i) => (
+                <motion.li
+                  key={r.id}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.1 + i * 0.05 }}
+                  className="flex items-center gap-2.5 rounded-xl bg-white/[0.04] px-3 py-2"
+                >
+                  <span
+                    className={`grid h-6 w-6 place-items-center rounded-lg ${r.correct ? "bg-lime text-ink" : "bg-coral/20 text-coral"}`}
+                  >
+                    {r.correct ? <Check size={14} strokeWidth={3} /> : <X size={14} strokeWidth={3} />}
                   </span>
-                  <span className="tabular-nums text-white/60">
-                    {r.points > 0 ? `+${r.points}` : "—"}
+                  <span className="flex-1 truncate font-semibold">{r.name}</span>
+                  <span className="font-display font-bold tabular-nums text-white/70">
+                    {r.points > 0 ? <span className="text-lime">+{r.points}</span> : "—"}
                     {r.ms !== null && r.correct ? ` · ${(r.ms / 1000).toFixed(1)}s` : ""}
                   </span>
-                </li>
+                </motion.li>
               ))}
             </ul>
             {!result.isLastRound && (
-              <p className="text-center text-xs text-white/40">Próxima ronda en unos segundos…</p>
+              <p className="text-center text-xs font-semibold text-white/40">Próxima ronda en unos segundos…</p>
             )}
           </motion.section>
         )}
       </AnimatePresence>
 
       {state && state.players.length > 0 && (
-        <section className="card space-y-2 p-5">
-          <p className="text-xs uppercase tracking-widest text-white/40">
-            {state.status === "finished" ? "Podio final" : "Tabla"}
-          </p>
-          <ol className="space-y-1 text-sm">
+        <section className="card space-y-3 p-5 sm:p-6">
+          <p className="eyebrow">{state.status === "finished" ? "Podio final" : "Tabla"}</p>
+          <ol className="space-y-1.5 text-sm">
             {state.players.map((p, i) => (
-              <li key={p.id} className="flex justify-between">
-                <span>
-                  {["🥇", "🥈", "🥉"][i] ?? `${i + 1}.`} {p.name}
-                  {p.id === state.hostId ? " 👑" : ""}
+              <motion.li
+                layout
+                key={p.id}
+                transition={{ type: "spring", stiffness: 500, damping: 35 }}
+                className={`flex items-center gap-3 rounded-xl px-3 py-2.5 ${
+                  p.id === selfId ? "bg-accent/10 ring-1 ring-accent/40" : "bg-white/[0.04]"
+                } ${p.connected ? "" : "opacity-50"}`}
+              >
+                <span
+                  className={`grid h-7 w-7 place-items-center rounded-lg font-display text-sm font-extrabold ${
+                    PODIUM[i] ?? "bg-white/10 text-white/60"
+                  }`}
+                >
+                  {i + 1}
                 </span>
-                <span className="tabular-nums font-semibold">{p.score}</span>
-              </li>
+                <span className="flex flex-1 items-center gap-1.5 truncate font-semibold">
+                  {p.name}
+                  {p.id === state.hostId && <Crown size={15} strokeWidth={2.6} className="shrink-0 text-yellow" />}
+                </span>
+                <AnimatedNumber value={p.score} className="font-display text-base font-extrabold" />
+              </motion.li>
             ))}
           </ol>
           {state.status === "finished" && (
-            <div className="mt-3 space-y-2">
+            <div className="mt-3 space-y-2.5">
               <button
                 type="button"
-                className={votedRematch ? "btn-ghost w-full" : "btn-primary w-full"}
+                className={votedRematch ? "btn-ghost w-full" : "btn-accent w-full text-lg"}
                 onClick={() => getSocket().emit("rematch")}
               >
-                {votedRematch ? "Pediste revancha ✔" : "Revancha 🔁"}
+                {votedRematch ? <Check size={18} strokeWidth={2.8} /> : <RotateCcw size={18} strokeWidth={2.6} />}
+                {votedRematch ? "Pediste revancha" : "Revancha"}
               </button>
-              <p className="text-center text-xs text-white/45">
-                {rematchVotes.length}/{state.players.length} quieren revancha
-                {rematchVotes.length < state.players.length
-                  ? " · arranca sola cuando estén todos"
-                  : ""}
-              </p>
+              <div className="flex items-center gap-2">
+                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10">
+                  <motion.div
+                    className="h-full rounded-full bg-accent"
+                    animate={{ width: `${(rematchVotes.length / Math.max(1, state.players.length)) * 100}%` }}
+                  />
+                </div>
+                <p className="text-xs font-semibold text-white/50">
+                  {rematchVotes.length}/{state.players.length} quieren revancha
+                </p>
+              </div>
+              {rematchVotes.length < state.players.length && (
+                <p className="text-center text-xs text-white/40">Arranca sola cuando estén todos</p>
+              )}
               {isHost && (
                 <div className="grid gap-2 sm:grid-cols-3">
-                  <button
-                    type="button"
-                    className="btn-ghost w-full"
-                    onClick={() => getSocket().emit("start_game")}
-                  >
+                  <button type="button" className="btn-ghost w-full" onClick={() => getSocket().emit("start_game")}>
+                    <Zap size={17} strokeWidth={2.6} />
                     Arrancar ya
                   </button>
-                  <button
-                    type="button"
-                    className="btn-ghost w-full"
-                    onClick={() => getSocket().emit("back_to_lobby")}
-                  >
+                  <button type="button" className="btn-ghost w-full" onClick={() => getSocket().emit("back_to_lobby")}>
+                    <Settings2 size={17} strokeWidth={2.6} />
                     Cambiar modo
                   </button>
-                  <button type="button" className="btn-ghost w-full text-rose-200" onClick={closeRoom}>
+                  <button type="button" className="btn-ghost w-full text-coral" onClick={closeRoom}>
+                    <DoorOpen size={17} strokeWidth={2.6} />
                     Cerrar sala
                   </button>
                 </div>
               )}
               {!isHost && (
-                <p className="text-center text-xs text-white/45">
-                  El anfitrión 👑 puede cambiar el modo o cerrar la sala
+                <p className="flex items-center justify-center gap-1.5 text-center text-xs text-white/45">
+                  <Crown size={13} className="text-yellow" />
+                  El anfitrión puede cambiar el modo o cerrar la sala
                 </p>
               )}
             </div>
@@ -710,7 +889,7 @@ export default function RoomPage() {
         </section>
       )}
 
-      {error && <p className="text-sm text-rose-300">{error}</p>}
+      {error && <p className="text-sm font-semibold text-coral">{error}</p>}
     </Shell>
   );
 }

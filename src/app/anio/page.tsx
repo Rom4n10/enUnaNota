@@ -1,10 +1,19 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion } from "motion/react";
+import { RotateCcw, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatedNumber } from "@/components/AnimatedNumber";
+import { CategoryPicker } from "@/components/CategoryPicker";
+import { Leaderboard } from "@/components/Leaderboard";
+import { ModeHeader } from "@/components/ModeHeader";
+import { RoundProgress } from "@/components/RoundProgress";
 import { Shell } from "@/components/Shell";
 import { OptionGrid } from "@/components/OptionGrid";
+import { SolutionCard } from "@/components/SolutionCard";
 import { Waveform } from "@/components/Waveform";
+import { celebrate } from "@/lib/fx";
+import { accentStyle, modeOf } from "@/lib/modes";
 import {
   answerRound,
   getCategories,
@@ -96,6 +105,7 @@ export default function YearPage() {
     if (res.correct) setScore((s) => s + 1);
     setTimeout(async () => {
       if (index + 1 >= TOTAL_ROUNDS) {
+        celebrate(undefined, true);
         setPhase("over");
         setRound(null);
         return;
@@ -105,50 +115,21 @@ export default function YearPage() {
     }, 2200);
   }
 
+  const accent = accentStyle(modeOf("anio").color);
+
   if (phase === "setup") {
     return (
-      <Shell>
-        <section className="card space-y-4 p-5">
-          <h1 className="text-2xl font-black">📅 Adiviná el año</h1>
-          <p className="text-sm text-white/60">
-            8 segundos de cada tema y cuatro años posibles. Diez canciones para demostrar que
-            sabés en qué época sonaba cada hit.
-          </p>
-          <div>
-            <p className="mb-2 text-xs uppercase tracking-widest text-white/40">Categoría</p>
-            <div className="flex flex-wrap gap-2">
-              {categories.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => setCategoryId(c.id)}
-                  className={`rounded-full border px-4 py-2 text-sm transition ${
-                    c.id === categoryId
-                      ? "border-fuchsia-400/70 bg-fuchsia-500/20"
-                      : "border-white/12 bg-white/5 hover:bg-white/10"
-                  }`}
-                >
-                  {c.emoji} {c.name}
-                </button>
-              ))}
-            </div>
-          </div>
-          <button type="button" className="btn-primary w-full" onClick={start}>
+      <Shell style={accent}>
+        <ModeHeader id="anio">
+          8 segundos de cada tema y cuatro años posibles. Diez canciones para demostrar que sabés en qué época sonaba
+          cada hit.
+        </ModeHeader>
+        <section className="card space-y-5 p-5 sm:p-6">
+          <CategoryPicker categories={categories} value={categoryId} onChange={setCategoryId} />
+          <button type="button" className="btn-accent w-full text-lg" onClick={start}>
             Arrancar
           </button>
-          {top.length > 0 && (
-            <div className="space-y-1">
-              <p className="text-xs uppercase tracking-widest text-white/40">Ranking de la semana</p>
-              {top.slice(0, 5).map((entry, i) => (
-                <div key={`${entry.name}-${entry.at}`} className="flex justify-between text-sm">
-                  <span className="text-white/70">
-                    {i + 1}. {entry.name}
-                  </span>
-                  <span className="tabular-nums font-semibold">{entry.score}</span>
-                </div>
-              ))}
-            </div>
-          )}
+          <Leaderboard entries={top} />
         </section>
       </Shell>
     );
@@ -156,16 +137,22 @@ export default function YearPage() {
 
   if (phase === "over") {
     return (
-      <Shell>
-        <section className="card space-y-4 p-6 text-center">
-          <p className="text-xs uppercase tracking-widest text-white/40">Terminaste</p>
-          <p className="text-5xl font-black text-sky-300">
-            {score}/{TOTAL_ROUNDS}
+      <Shell style={accent}>
+        <motion.section
+          initial={{ opacity: 0, scale: 0.94 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ type: "spring", stiffness: 260, damping: 20 }}
+          className="card space-y-5 p-6 text-center"
+        >
+          <p className="eyebrow">Terminaste</p>
+          <p className="font-display text-7xl font-extrabold text-accent">
+            <AnimatedNumber value={score} />
+            <span className="text-3xl text-white/40">/{TOTAL_ROUNDS}</span>
           </p>
           {submitted ? (
-            <p className="text-sm text-lime-300">
+            <motion.p initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="pill mx-auto" style={accentStyle("#c8ff2e")}>
               {rank ? `Entraste #${rank} en el ranking semanal` : "Esta vez no entraste al top 50"}
-            </p>
+            </motion.p>
           ) : (
             <div className="flex gap-2">
               <input
@@ -173,7 +160,7 @@ export default function YearPage() {
                 onChange={(e) => setTypedName(e.target.value)}
                 placeholder="Tu apodo"
                 maxLength={16}
-                className="min-w-0 flex-1 rounded-2xl border border-white/12 bg-white/5 px-4 py-3 outline-none placeholder:text-white/30 focus:border-sky-400/60"
+                className="field min-w-0 flex-1 py-3"
               />
               <button
                 type="button"
@@ -191,34 +178,41 @@ export default function YearPage() {
                   setSubmitted(true);
                 }}
               >
+                <Upload size={17} strokeWidth={2.6} />
                 Subir
               </button>
             </div>
           )}
-          <button type="button" className="btn-primary w-full" onClick={start}>
+          <Leaderboard entries={top} />
+          <button type="button" className="btn-accent w-full" onClick={start}>
+            <RotateCcw size={18} strokeWidth={2.6} />
             Otra vuelta
           </button>
-        </section>
+        </motion.section>
       </Shell>
     );
   }
 
   return (
-    <Shell>
-      <section className="card space-y-4 p-5">
-        <div className="flex items-center justify-between text-xs uppercase tracking-widest text-white/40">
-          <span>
+    <Shell style={accent}>
+      <section className="card space-y-4 p-5 sm:p-6">
+        <div className="flex items-center justify-between">
+          <span className="eyebrow">
             Tema {index + 1} / {TOTAL_ROUNDS}
           </span>
-          <span className="tabular-nums">{score} aciertos</span>
+          <span className="pill">
+            <AnimatedNumber value={score} /> aciertos
+          </span>
         </div>
+        <RoundProgress index={index} total={TOTAL_ROUNDS} />
 
-        <div className="rounded-2xl bg-black/30 p-2">
-          <Waveform active={status === "playing"} getAnalyser={getAnalyser} color="#38bdf8" />
+        <div className="stage">
+          <Waveform active={status === "playing"} getAnalyser={getAnalyser} color="#3db8ff" />
         </div>
 
         {round && (
           <OptionGrid
+            key={round.roundId}
             options={round.options}
             onPick={pick}
             pickedId={picked}
@@ -229,23 +223,12 @@ export default function YearPage() {
 
         <AnimatePresence>
           {solution && (
-            <motion.div
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              className="flex items-center gap-3"
-            >
-              {solution.artwork && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={solution.artwork} alt="" className="h-12 w-12 rounded-xl" />
-              )}
-              <div className="text-sm">
-                <p className="font-bold">
-                  {solution.title} {solution.year ? `(${solution.year})` : ""}
-                </p>
-                <p className="text-white/60">{solution.artist}</p>
-              </div>
-            </motion.div>
+            <SolutionCard
+              title={solution.title}
+              artist={solution.artist}
+              artwork={solution.artwork}
+              year={solution.year}
+            />
           )}
         </AnimatePresence>
       </section>

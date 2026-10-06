@@ -1,13 +1,17 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion } from "motion/react";
+import { Check, Flame, Search, Share2, SkipForward, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ListenButton } from "@/components/ListenButton";
+import { ModeHeader } from "@/components/ModeHeader";
 import { Shell } from "@/components/Shell";
 import { Waveform } from "@/components/Waveform";
+import { celebrate, fail } from "@/lib/fx";
+import { accentStyle, modeOf } from "@/lib/modes";
 import { getDaily, guessDaily } from "@/lib/api";
 import {
   buildDailyShareText,
-  buildShareGrid,
   getDailyResult,
   getProfile,
   registerDailyWin,
@@ -84,6 +88,8 @@ export default function DailyPage() {
     setAttempts(nextAttempts);
     setGuess("");
     stop();
+    if (res.correct) celebrate(undefined, true);
+    else if (!skipped) fail();
 
     if (res.done) {
       setFinished(true);
@@ -109,34 +115,57 @@ export default function DailyPage() {
     setTimeout(() => setCopied(false), 2000);
   }
 
+  const accent = accentStyle(modeOf("diario").color);
+  const maxAttempts = daily?.maxAttempts ?? 6;
+
   if (error) {
     return (
-      <Shell>
+      <Shell style={accent}>
         <p className="card p-6 text-white/70">{error}</p>
       </Shell>
     );
   }
 
   return (
-    <Shell>
-      <div className="flex items-center justify-between text-sm text-white/55">
-        <span>Desafío del {daily?.date ?? "…"}</span>
-        <span className="rounded-full bg-fuchsia-500/15 px-3 py-1 text-fuchsia-200">
-          🔥 Racha {streak}
-        </span>
+    <Shell style={accent}>
+      <div className="flex items-start justify-between gap-3">
+        <ModeHeader id="diario">Desafío del {daily?.date ?? "…"}</ModeHeader>
+        <motion.span
+          key={streak}
+          initial={{ scale: 0.6 }}
+          animate={{ scale: 1 }}
+          transition={{ type: "spring", stiffness: 500, damping: 14 }}
+          className="pill shrink-0"
+          style={accentStyle("#ff8a1f")}
+        >
+          <Flame size={15} strokeWidth={2.6} />
+          {streak}
+        </motion.span>
       </div>
 
-      <section className="card space-y-4 p-5">
-        <div className="flex items-center justify-between text-xs uppercase tracking-widest text-white/40">
-          <span>Intento {Math.min(attemptIndex + 1, daily?.maxAttempts ?? 6)} / {daily?.maxAttempts ?? 6}</span>
-          <span>{finished ? "Ronda cerrada" : `Escuchás ${(unlockedMs / 1000).toFixed(1)}s`}</span>
+      <section className="card space-y-5 p-5 sm:p-6">
+        <div className="flex items-center justify-between">
+          <span className="eyebrow">
+            Intento {Math.min(attemptIndex + 1, maxAttempts)} / {maxAttempts}
+          </span>
+          <AnimatePresence mode="popLayout">
+            <motion.span
+              key={finished ? "done" : unlockedMs}
+              initial={{ y: -12, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 12, opacity: 0 }}
+              className="pill"
+            >
+              {finished ? "Ronda cerrada" : `${(unlockedMs / 1000).toFixed(1)}s`}
+            </motion.span>
+          </AnimatePresence>
         </div>
 
-        <div className="relative overflow-hidden rounded-2xl bg-black/30 p-2">
+        <div className="stage">
           <Waveform active={status === "playing"} getAnalyser={getAnalyser} />
-          <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+          <div className="mx-1 mb-1 mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/10">
             <motion.div
-              className="h-full bg-fuchsia-400"
+              className="h-full rounded-full bg-accent shadow-[0_0_12px_var(--accent)]"
               animate={{
                 width: `${status === "playing" && clipMs ? Math.min(100, (elapsedMs / clipMs) * 100) : 0}%`,
               }}
@@ -146,83 +175,92 @@ export default function DailyPage() {
         </div>
 
         <div className="flex flex-wrap gap-3">
-          <button
-            type="button"
-            className="btn-primary flex-1"
-            disabled={status === "loading" || status === "error"}
-            onClick={() =>
-              status === "playing" ? stop() : playClip(finished ? null : unlockedMs)
-            }
-          >
-            {status === "loading"
-              ? "Cargando…"
-              : status === "playing"
-                ? "⏹ Detener"
-                : finished
-                  ? "▶ Escuchar completa"
-                  : `▶ Escuchar ${(unlockedMs / 1000).toFixed(1)}s`}
-          </button>
+          <ListenButton
+            status={status}
+            className="flex-1"
+            label={finished ? "Escuchar completa" : `Escuchar ${(unlockedMs / 1000).toFixed(1)}s`}
+            onPlay={() => playClip(finished ? null : unlockedMs)}
+            onStop={stop}
+          />
           {!finished && (
             <button type="button" className="btn-ghost" onClick={() => submit("", true)}>
-              Saltear (+tiempo)
+              <SkipForward size={18} strokeWidth={2.4} />
+              Saltear
             </button>
           )}
         </div>
 
         <div className="flex gap-1.5">
-          {Array.from({ length: daily?.maxAttempts ?? 6 }).map((_, i) => {
+          {Array.from({ length: maxAttempts }).map((_, i) => {
             const attempt = attempts[i];
             const tone =
               attempt === "win"
-                ? "bg-lime-400"
+                ? "bg-lime text-ink"
                 : attempt === "fail"
-                  ? "bg-rose-400"
+                  ? "bg-coral/80 text-ink"
                   : attempt === "skip"
-                    ? "bg-white/40"
-                    : "bg-white/10";
-            return <div key={i} className={`h-2 flex-1 rounded-full ${tone}`} />;
+                    ? "bg-white/25 text-ink"
+                    : i === attemptIndex && !finished
+                      ? "bg-white/10 ring-2 ring-accent/70"
+                      : "bg-white/8";
+            return (
+              <motion.div
+                key={`${i}-${attempt ?? "empty"}`}
+                initial={attempt ? { scale: 0.4, rotateX: 90 } : false}
+                animate={{ scale: 1, rotateX: 0 }}
+                transition={{ type: "spring", stiffness: 420, damping: 18 }}
+                className={`grid h-9 flex-1 place-items-center rounded-xl ${tone}`}
+              >
+                {attempt === "win" && <Check size={18} strokeWidth={3} />}
+                {attempt === "fail" && <X size={18} strokeWidth={3} />}
+                {attempt === "skip" && <SkipForward size={15} strokeWidth={3} />}
+              </motion.div>
+            );
           })}
         </div>
       </section>
 
       {!finished && (
-        <section className="relative">
-          <input
-            ref={inputRef}
-            value={guess}
-            onChange={(e) => setGuess(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && guess.trim() && submit(guess)}
-            placeholder="Escribí el título de la canción…"
-            className="w-full rounded-2xl border border-white/12 bg-white/5 px-4 py-4 outline-none placeholder:text-white/30 focus:border-fuchsia-400/60"
-          />
+        <section className="relative space-y-3">
+          <div className="relative">
+            <Search size={18} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-white/35" />
+            <input
+              ref={inputRef}
+              value={guess}
+              onChange={(e) => setGuess(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && guess.trim() && submit(guess)}
+              placeholder="Escribí el título de la canción…"
+              className="field pl-11"
+            />
+          </div>
           <AnimatePresence>
             {suggestions.length > 0 && (
               <motion.ul
-                initial={{ opacity: 0, y: -6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                className="absolute z-10 mt-2 w-full overflow-hidden rounded-2xl border border-white/12 bg-[#120f22]/95 backdrop-blur"
+                initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -6 }}
+                className="absolute top-14 z-10 w-full overflow-hidden rounded-2xl border border-white/10 bg-surface-2/95 shadow-2xl backdrop-blur"
               >
-                {suggestions.map((s) => (
-                  <li key={s}>
+                {suggestions.map((s, i) => (
+                  <motion.li
+                    key={s}
+                    initial={{ opacity: 0, x: -8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: i * 0.03 }}
+                  >
                     <button
                       type="button"
-                      className="w-full px-4 py-3 text-left text-sm hover:bg-white/10"
+                      className="w-full px-4 py-3 text-left text-sm font-semibold transition hover:bg-accent hover:text-ink"
                       onClick={() => submit(s)}
                     >
                       {s}
                     </button>
-                  </li>
+                  </motion.li>
                 ))}
               </motion.ul>
             )}
           </AnimatePresence>
-          <button
-            type="button"
-            className="btn-ghost mt-3 w-full"
-            disabled={!guess.trim()}
-            onClick={() => submit(guess)}
-          >
+          <button type="button" className="btn-primary w-full" disabled={!guess.trim()} onClick={() => submit(guess)}>
             Adivinar
           </button>
         </section>
@@ -230,32 +268,55 @@ export default function DailyPage() {
 
       {finished && (
         <motion.section
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="card space-y-4 p-5 text-center"
+          initial={{ opacity: 0, y: 20, scale: 0.96 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ type: "spring", stiffness: 260, damping: 22 }}
+          className="card space-y-5 p-6 text-center"
         >
-          <p className="text-2xl font-black">
-            {won ? "🟩 ¡La sacaste!" : "🟥 Se escapó por hoy"}
-          </p>
+          <motion.span
+            initial={{ scale: 0, rotate: -30 }}
+            animate={{ scale: 1, rotate: 0 }}
+            transition={{ delay: 0.1, type: "spring", stiffness: 400, damping: 12 }}
+            className={`mx-auto grid h-16 w-16 place-items-center rounded-2xl ${won ? "bg-lime text-ink" : "bg-coral/20 text-coral"}`}
+          >
+            {won ? <Check size={34} strokeWidth={3} /> : <X size={34} strokeWidth={3} />}
+          </motion.span>
+          <p className="font-display text-3xl font-extrabold">{won ? "¡La sacaste!" : "Se escapó por hoy"}</p>
           {solution && (
-            <div className="flex items-center justify-center gap-3">
+            <div className="mx-auto flex max-w-sm items-center gap-3 rounded-2xl bg-white/5 p-3 text-left">
               {solution.artwork && (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={solution.artwork} alt="" className="h-16 w-16 rounded-xl" />
               )}
-              <div className="text-left">
-                <p className="font-bold">{solution.title}</p>
+              <div>
+                <p className="font-display text-lg font-bold leading-tight">{solution.title}</p>
                 <p className="text-sm text-white/60">{solution.artist}</p>
               </div>
             </div>
           )}
-          <pre className="whitespace-pre-wrap text-xl tracking-[0.3em]">
-            {buildShareGrid({ date: daily!.date, attempts, won, finished: true }, daily!.maxAttempts)}
-          </pre>
+          <div className="flex justify-center gap-1.5">
+            {Array.from({ length: maxAttempts }).map((_, i) => {
+              const attempt = attempts[i];
+              const tone =
+                attempt === "win" ? "bg-lime" : attempt === "fail" ? "bg-coral" : attempt === "skip" ? "bg-white/30" : "bg-white/10";
+              return (
+                <motion.span
+                  key={i}
+                  initial={{ scale: 0, y: 10 }}
+                  animate={{ scale: 1, y: 0 }}
+                  transition={{ delay: 0.25 + i * 0.07, type: "spring", stiffness: 500, damping: 15 }}
+                  className={`h-8 w-8 rounded-lg ${tone}`}
+                />
+              );
+            })}
+          </div>
           <button type="button" className="btn-primary w-full" onClick={share}>
+            <Share2 size={18} strokeWidth={2.6} />
             {copied ? "¡Copiado!" : "Compartir resultado"}
           </button>
-          <p className="text-sm text-white/45">Próximo desafío en {formatCountdown(countdown)}</p>
+          <p className="text-sm text-white/45">
+            Próximo desafío en <span className="font-bold tabular-nums text-white/80">{formatCountdown(countdown)}</span>
+          </p>
         </motion.section>
       )}
     </Shell>
