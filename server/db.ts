@@ -48,6 +48,14 @@ export async function insertQuiet(table: string, row: Record<string, unknown>): 
   await call(table, { method: "POST", body: row, prefer: "return=minimal" });
 }
 
+export async function upsertQuiet(table: string, row: Record<string, unknown>, onConflict: string): Promise<void> {
+  await call(`${table}?on_conflict=${onConflict}`, {
+    method: "POST",
+    body: row,
+    prefer: "resolution=merge-duplicates,return=minimal",
+  });
+}
+
 export async function count(table: string, query: URLSearchParams): Promise<number> {
   query.set("select", "id");
   query.set("limit", "1");

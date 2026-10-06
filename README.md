@@ -79,7 +79,8 @@ los temas salen de iTunes en el momento. Las opciones incorrectas se eligen del 
 sean creíbles.
 
 ### Cache y precarga
-- Las búsquedas a iTunes se cachean 6 horas y los pedidos simultáneos iguales se unifican en uno solo.
+- Las búsquedas a iTunes se cachean 24 horas en memoria y en Supabase, y los pedidos simultáneos iguales se
+  unifican en uno solo.
 - Los previews se guardan en una cache LRU en memoria (400 entradas): se descargan cuando se crea la ronda, así
   que el audio responde en milisegundos.
 - El cliente precarga la ronda siguiente mientras suena la actual.
@@ -178,5 +179,7 @@ Variables: `PORT` (la define Railway), `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KE
   haría falta un adaptador compartido (por ejemplo Redis).
 - Sin login: cualquiera puede elegir cualquier apodo en los rankings.
 - Todas las búsquedas a iTunes salen de la IP del servidor, que tiene un límite aproximado de 20 por minuto
-  según la documentación de Apple. La cache de 6 horas lo amortigua, pero con caches vacías (por ejemplo,
-  justo después de un deploy) muchas búsquedas nuevas a la vez pueden fallar.
+  según la documentación de Apple. Por eso los resultados se cachean 24 horas en memoria y en Supabase (tabla
+  `itunes_cache`, así los deploys arrancan con la cache llena) y los pedidos en vivo pasan por un limitador
+  (20 por minuto con ráfaga, reintentos y pausa global si Apple responde 403/429). Si igual falla, se usa el
+  último resultado guardado aunque esté vencido.
