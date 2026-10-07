@@ -1,13 +1,14 @@
 "use client";
 
 import { AnimatePresence, motion } from "motion/react";
-import { RotateCcw, Upload } from "lucide-react";
+import { RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatedNumber } from "@/components/AnimatedNumber";
 import { CategoryPicker } from "@/components/CategoryPicker";
 import { Leaderboard } from "@/components/Leaderboard";
 import { ModeHeader } from "@/components/ModeHeader";
 import { RoundProgress } from "@/components/RoundProgress";
+import { ScoreSubmit } from "@/components/ScoreSubmit";
 import { Shell } from "@/components/Shell";
 import { OptionGrid } from "@/components/OptionGrid";
 import { SolutionCard } from "@/components/SolutionCard";
@@ -21,11 +22,9 @@ import {
   getYearRound,
   submitScore,
 } from "@/lib/api";
-import { updateProfile } from "@/lib/storage";
 import type { Category, RoundPayload, ScoreEntry, Solution } from "@/lib/types";
 import { preloadPreview, useAutoplay, usePreviewPlayer } from "@/lib/useAudio";
 import { useGameLog } from "@/lib/useGameLog";
-import { useProfile } from "@/lib/useProfile";
 
 const TOTAL_ROUNDS = 10;
 const CLIP_MS = 8_000;
@@ -42,16 +41,11 @@ export default function YearPage() {
   const [picked, setPicked] = useState<string | null>(null);
   const [solution, setSolution] = useState<Solution | null>(null);
   const [top, setTop] = useState<ScoreEntry[]>([]);
-  const [rank, setRank] = useState<number | null>(null);
-  const [submitted, setSubmitted] = useState(false);
   const seen = useRef<number[]>([]);
   const prefetched = useRef<Promise<RoundPayload> | null>(null);
 
   const { status, playClip, stop, getAnalyser } = usePreviewPlayer(round?.audioUrl ?? null);
-  const profile = useProfile();
-  const [typedName, setTypedName] = useState<string | null>(null);
   useGameLog(phase === "over", { mode: "anio", categoryId, score });
-  const name = typedName ?? profile.nickname;
 
   useEffect(() => {
     getCategories().then(setCategories).catch(() => setCategories([]));
@@ -92,8 +86,6 @@ export default function YearPage() {
     prefetched.current = null;
     setScore(0);
     setIndex(0);
-    setRank(null);
-    setSubmitted(false);
     setPhase("playing");
     await nextRound();
   }
@@ -151,40 +143,11 @@ export default function YearPage() {
             <AnimatedNumber value={score} />
             <span className="text-3xl text-white/40">/{TOTAL_ROUNDS}</span>
           </p>
-          {submitted ? (
-            <motion.p initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="pill mx-auto" style={accentStyle("#c8ff2e")}>
-              {rank ? `Entraste #${rank} en el ranking semanal` : "Esta vez no entraste al top 50"}
-            </motion.p>
-          ) : (
-            <div className="flex gap-2">
-              <input
-                value={name}
-                onChange={(e) => setTypedName(e.target.value)}
-                placeholder="Tu apodo"
-                maxLength={16}
-                className="field min-w-0 flex-1 py-3"
-              />
-              <button
-                type="button"
-                className="btn-ghost"
-                disabled={!name.trim()}
-                onClick={async () => {
-                  updateProfile({ nickname: name.trim() });
-                  try {
-                    const r = await submitScore({ mode: "year", categoryId, name: name.trim(), score });
-                    setRank(r.rank);
-                    setTop(r.top);
-                  } catch {
-                    setRank(null);
-                  }
-                  setSubmitted(true);
-                }}
-              >
-                <Upload size={17} strokeWidth={2.6} />
-                Subir
-              </button>
-            </div>
-          )}
+          <ScoreSubmit
+            submit={(name) => submitScore({ mode: "year", categoryId, name, score })}
+            onResult={(r) => setTop(r.top)}
+            resultText={(rank) => (rank ? `Entraste #${rank} en el ranking semanal` : "Esta vez no entraste al top 50")}
+          />
           <Leaderboard entries={top} />
           <button type="button" className="btn-accent w-full" onClick={start}>
             <RotateCcw size={18} strokeWidth={2.6} />

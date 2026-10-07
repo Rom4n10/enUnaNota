@@ -10,7 +10,7 @@ import {
 } from "./daily.js";
 import { getArtistTracks, getCategoryTracks, searchTracks, type Track } from "./itunes.js";
 import { gameStats, recordGame } from "./games.js";
-import { ARTIST_MODE, submitScore, topArtists, topScores, weekKey, type Period } from "./leaderboard.js";
+import { ALL_CATEGORIES, ARTIST_MODE, submitScore, topArtists, topScores, weekKey, type Period } from "./leaderboard.js";
 import {
   chainPartner,
   createImpostorGroup,
@@ -255,10 +255,15 @@ api.post("/leaderboard", async (req, res) => {
     return;
   }
   const cleanMode = String(mode ?? "rush").slice(0, 32);
+  const category = cleanCategory(categoryId);
+  if (category === ALL_CATEGORIES) {
+    res.status(400).json({ error: "invalid_category" });
+    return;
+  }
   const cap = cleanMode === ARTIST_MODE ? ARTIST_MAX_SCORE : 1_000_000;
   const result = await submitScore(
     cleanMode,
-    cleanCategory(categoryId),
+    category,
     String(name ?? "").trim(),
     Math.min(Math.round(points), cap),
     periodOf(period),

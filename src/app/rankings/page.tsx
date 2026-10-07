@@ -21,6 +21,8 @@ const TABS: { id: Tab; label: string; color: string; href: string }[] = [
   { id: "year", label: "Adiviná el año", color: modeOf("anio").color, href: "/anio" },
 ];
 
+const ALL_CATEGORIES: Category = { id: "all", name: "Todas", emoji: "" };
+
 const PERIODS: { id: Period; label: string }[] = [
   { id: "week", label: "Esta semana" },
   { id: "all", label: "Histórico" },
@@ -191,7 +193,9 @@ function ModeRanking({ mode, href, period }: { mode: "rush" | "year"; href: stri
   const [top, setTop] = useState<ScoreEntry[] | null>(null);
 
   useEffect(() => {
-    getCategories().then(setCategories).catch(() => setCategories([]));
+    getCategories()
+      .then((list) => setCategories([ALL_CATEGORIES, ...list]))
+      .catch(() => setCategories([]));
   }, []);
 
   useEffect(() => {
@@ -222,6 +226,11 @@ function ModeRanking({ mode, href, period }: { mode: "rush" | "year"; href: stri
           limit={10}
           title={period === "week" ? "Top de la semana" : "Top histórico"}
           emptyText="Nadie subió puntaje acá todavía. El primer puesto está libre."
+          detail={
+            categoryId === ALL_CATEGORIES.id
+              ? (entry) => categories.find((c) => c.id === entry.categoryId)?.name
+              : undefined
+          }
         />
       )}
       <Link href={href} className="btn-accent w-full">

@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "motion/react";
-import { Flame, LoaderCircle, RotateCcw, Upload, Zap } from "lucide-react";
+import { Flame, LoaderCircle, RotateCcw, Zap } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatedNumber } from "@/components/AnimatedNumber";
 import { CategoryPicker } from "@/components/CategoryPicker";
@@ -9,6 +9,7 @@ import { Leaderboard } from "@/components/Leaderboard";
 import { ModeHeader } from "@/components/ModeHeader";
 import { Shell } from "@/components/Shell";
 import { OptionGrid } from "@/components/OptionGrid";
+import { ScoreSubmit } from "@/components/ScoreSubmit";
 import { Waveform } from "@/components/Waveform";
 import { celebrate } from "@/lib/fx";
 import { accentStyle, modeOf } from "@/lib/modes";
@@ -45,15 +46,11 @@ export default function RushPage() {
   const feverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prefetched = useRef<Promise<RoundPayload> | null>(null);
   const [top, setTop] = useState<ScoreEntry[]>([]);
-  const [rank, setRank] = useState<number | null>(null);
-  const [submitted, setSubmitted] = useState(false);
 
   const { status, playClip, stop, getAnalyser } = usePreviewPlayer(round?.audioUrl ?? null);
   const profile = useProfile();
   const best = profile.rushBest;
-  const [typedName, setTypedName] = useState<string | null>(null);
   useGameLog(phase === "over", { mode: "rush", categoryId, score });
-  const name = typedName ?? profile.nickname;
 
   useEffect(() => {
     getCategories().then(setCategories).catch(() => setCategories([]));
@@ -129,8 +126,6 @@ export default function RushPage() {
     prefetched.current = null;
     setScore(0);
     setSolved(0);
-    setRank(null);
-    setSubmitted(false);
     setCombo(0);
     setFever(false);
     setTimeLeft(START_MS);
@@ -211,45 +206,11 @@ export default function RushPage() {
           <p className="text-white/60">
             {solved} canciones adivinadas · récord {best}
           </p>
-          {submitted ? (
-            <motion.p initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="pill mx-auto" style={accentStyle("#c8ff2e")}>
-              {rank ? `Entraste #${rank} en el ranking semanal` : "Esta vez no entraste al top 50"}
-            </motion.p>
-          ) : (
-            <div className="flex gap-2">
-              <input
-                value={name}
-                onChange={(e) => setTypedName(e.target.value)}
-                placeholder="Tu apodo"
-                maxLength={16}
-                className="field min-w-0 flex-1 py-3"
-              />
-              <button
-                type="button"
-                className="btn-ghost"
-                disabled={!name.trim()}
-                onClick={async () => {
-                  updateProfile({ nickname: name.trim() });
-                  try {
-                    const r = await submitScore({
-                      mode: "rush",
-                      categoryId,
-                      name: name.trim(),
-                      score,
-                    });
-                    setRank(r.rank);
-                    setTop(r.top);
-                  } catch {
-                    setRank(null);
-                  }
-                  setSubmitted(true);
-                }}
-              >
-                <Upload size={17} strokeWidth={2.6} />
-                Subir
-              </button>
-            </div>
-          )}
+          <ScoreSubmit
+            submit={(name) => submitScore({ mode: "rush", categoryId, name, score })}
+            onResult={(r) => setTop(r.top)}
+            resultText={(rank) => (rank ? `Entraste #${rank} en el ranking semanal` : "Esta vez no entraste al top 50")}
+          />
           <Leaderboard entries={top} />
           <button type="button" className="btn-accent w-full" onClick={start}>
             <RotateCcw size={18} strokeWidth={2.6} />

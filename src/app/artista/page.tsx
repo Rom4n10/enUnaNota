@@ -1,13 +1,14 @@
 "use client";
 
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowRight, Award, Crown, RotateCcw, Search, Upload } from "lucide-react";
+import { ArrowRight, Award, Crown, RotateCcw, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatedNumber } from "@/components/AnimatedNumber";
 import { ListenButton } from "@/components/ListenButton";
 import { Leaderboard } from "@/components/Leaderboard";
 import { ModeHeader } from "@/components/ModeHeader";
 import { RoundProgress } from "@/components/RoundProgress";
+import { ScoreSubmit } from "@/components/ScoreSubmit";
 import { Shell } from "@/components/Shell";
 import { OptionGrid } from "@/components/OptionGrid";
 import { SolutionCard } from "@/components/SolutionCard";
@@ -23,11 +24,10 @@ import {
   suggestArtists,
 } from "@/lib/api";
 import { ARTIST_ROUNDS, artistScore, formatArtistScore } from "@/lib/artistScore";
-import { awardBadge, updateProfile } from "@/lib/storage";
+import { awardBadge } from "@/lib/storage";
 import type { ArtistBoard, RoundPayload, ScoreEntry, Solution } from "@/lib/types";
 import { preloadPreview, useAutoplay, usePreviewPlayer } from "@/lib/useAudio";
 import { useGameLog } from "@/lib/useGameLog";
-import { useProfile } from "@/lib/useProfile";
 
 const TOTAL_ROUNDS = ARTIST_ROUNDS;
 const SNIPPET_MS = 1000;
@@ -49,12 +49,7 @@ export default function ArtistPage() {
   const [selected, setSelected] = useState<string | null>(null);
   const [popular, setPopular] = useState<ArtistBoard[]>([]);
   const [fans, setFans] = useState<ScoreEntry[]>([]);
-  const [rank, setRank] = useState<number | null>(null);
-  const [submitted, setSubmitted] = useState(false);
-  const [typedName, setTypedName] = useState<string | null>(null);
   const [score, setScore] = useState(0);
-  const profile = useProfile();
-  const name = typedName ?? profile.nickname;
   const shownAt = useRef(0);
   const answerMs = useRef(0);
   useGameLog(phase === "over", { mode: "artista", categoryId: artist, score: hits });
@@ -125,8 +120,6 @@ export default function ArtistPage() {
     setIndex(0);
     setHits(0);
     setBadge(null);
-    setRank(null);
-    setSubmitted(false);
     setFans([]);
     answerMs.current = 0;
     try {
@@ -172,20 +165,6 @@ export default function ArtistPage() {
   function choose(name: string) {
     setFans([]);
     setSelected(name);
-  }
-
-  async function upload() {
-    const clean = name.trim();
-    updateProfile({ nickname: clean });
-    try {
-      const r = await submitScore({ mode: "artista", categoryId: artist, name: clean, score, period: "all" });
-      setRank(r.rank);
-      setFans(r.top);
-      if (r.rank === 1) celebrate(undefined, true);
-    } catch {
-      setRank(null);
-    }
-    setSubmitted(true);
   }
 
   const accent = accentStyle(modeOf("artista").color);
@@ -300,34 +279,20 @@ export default function ArtistPage() {
           ) : (
             <p className="text-white/60">Necesitás 5 aciertos para la primera insignia.</p>
           )}
-          {submitted ? (
-            <motion.p
-              initial={{ scale: 0.8, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              className="pill mx-auto"
-              style={accentStyle("#c8ff2e")}
-            >
-              {rank === 1
+          <ScoreSubmit
+            submit={(name) => submitScore({ mode: "artista", categoryId: artist, name, score, period: "all" })}
+            onResult={(r) => {
+              setFans(r.top);
+              if (r.rank === 1) celebrate(undefined, true);
+            }}
+            resultText={(rank) =>
+              rank === 1
                 ? `Sos el fan número 1 de ${artist}`
                 : rank
                   ? `Quedaste #${rank} entre los fans de ${artist}`
-                  : "Esta vez no entraste al top 50"}
-            </motion.p>
-          ) : (
-            <div className="flex gap-2">
-              <input
-                value={name}
-                onChange={(e) => setTypedName(e.target.value)}
-                placeholder="Tu apodo"
-                maxLength={16}
-                className="field min-w-0 flex-1 py-3"
-              />
-              <button type="button" className="btn-ghost" disabled={!name.trim()} onClick={upload}>
-                <Upload size={17} strokeWidth={2.6} />
-                Subir
-              </button>
-            </div>
-          )}
+                  : "Esta vez no entraste al top 50"
+            }
+          />
           <Leaderboard
             entries={fans}
             title={`Top fans de ${artist}`}
