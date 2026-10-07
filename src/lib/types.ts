@@ -25,7 +25,7 @@ export type DailyPayload = RoundPayload & {
   nextPuzzleInMs: number;
 };
 
-export type ScoreEntry = { name: string; score: number; at: number };
+export type ScoreEntry = { name: string; score: number; at: number; categoryId?: string };
 
 export type ArtistBoard = { artist: string; plays: number; leader: ScoreEntry };
 

@@ -5,11 +5,13 @@
  */
 import { count, dbEnabled, insert, select } from "./db.js";
 
-export type Entry = { name: string; score: number; at: number };
+export type Entry = { name: string; score: number; at: number; categoryId?: string };
 export type Period = "week" | "all";
 export type ArtistBoard = { artist: string; plays: number; leader: Entry };
 
 export const ARTIST_MODE = "artista";
+/** Reads every category of a mode at once. */
+export const ALL_CATEGORIES = "all";
 
 const MAX_ENTRIES = 50;
 const TOP = 10;
@@ -18,8 +20,7 @@ const TOP_ARTISTS = 12;
 type Board = { categoryId: string; entries: Entry[] };
 const boards = new Map<string, Board>();
 
-type ScoreRow = { id: number; name: string; score: number; created_at: string };
-type ArtistRow = ScoreRow & { category_id: string };
+type ScoreRow = { id: number; name: string; score: number; created_at: string; category_id: string };
 
 export function weekKey(now = new Date()): string {
   const date = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
@@ -40,20 +41,24 @@ function keyFor(mode: string, categoryId: string, week = weekKey()): string {
 const escapeLike = (value: string) => value.replace(/[\\%_*]/g, (c) => `\\${c}`);
 
 function boardQuery(mode: string, categoryId: string, period: Period = "week"): URLSearchParams {
-  const query = new URLSearchParams({
-    mode: `eq.${mode}`,
-    category_id: mode === ARTIST_MODE ? `ilike.${escapeLike(categoryId)}` : `eq.${categoryId}`,
-  });
+  const query = new URLSearchParams({ mode: `eq.${mode}` });
+  if (mode === ARTIST_MODE) query.set("category_id", `ilike.${escapeLike(categoryId)}`);
+  else if (categoryId !== ALL_CATEGORIES) query.set("category_id", `eq.${categoryId}`);
   if (period === "week") query.set("week", `eq.${weekKey()}`);
   return query;
 }
 
-const toEntry = (row: ScoreRow): Entry => ({ name: row.name, score: row.score, at: Date.parse(row.created_at) });
+const toEntry = (row: ScoreRow): Entry => ({
+  name: row.name,
+  score: row.score,
+  at: Date.parse(row.created_at),
+  categoryId: row.category_id,
+});
 const byScore = (a: Entry, b: Entry) => b.score - a.score || a.at - b.at;
 
 async function dbTop(mode: string, categoryId: string, period: Period): Promise<Entry[]> {
   const query = boardQuery(mode, categoryId, period);
-  query.set("select", "id,name,score,created_at");
+  query.set("select", "id,name,score,created_at,category_id");
   query.set("order", "score.desc,id.asc");
   query.set("limit", String(TOP));
   return (await select<ScoreRow>("scores", query)).map(toEntry);
@@ -68,10 +73,11 @@ function memoryBoards(mode: string, period: Period): [string, Board][] {
 }
 
 function memoryTop(mode: string, categoryId: string, period: Period): Entry[] {
-  if (period === "week") return (boards.get(keyFor(mode, categoryId))?.entries ?? []).slice(0, TOP);
+  const all = mode !== ARTIST_MODE && categoryId === ALL_CATEGORIES;
+  if (period === "week" && !all) return (boards.get(keyFor(mode, categoryId))?.entries ?? []).slice(0, TOP);
   const wanted = categoryKey(mode, categoryId);
-  return memoryBoards(mode, "all")
-    .filter(([key]) => key.split("|").slice(2).join("|") === wanted)
+  return memoryBoards(mode, period)
+    .filter(([key]) => all || key.split("|").slice(2).join("|") === wanted)
     .flatMap(([, board]) => board.entries)
     .sort(byScore)
     .slice(0, TOP);
@@ -114,7 +120,7 @@ export async function submitScore(
   period: Period = "week",
 ): Promise<{ rank: number | null; top: Entry[] }> {
   const cleanName = name.slice(0, 16) || "Anónimo";
-  const entry: Entry = { name: cleanName, score, at: Date.now() };
+  const entry: Entry = { name: cleanName, score, at: Date.now(), categoryId };
   if (!dbEnabled) return memorySubmit(mode, categoryId, entry, period);
   try {
     const row = await insert<ScoreRow>("scores", {
@@ -171,7 +177,7 @@ export async function topArtists(period: Period = "week"): Promise<ArtistBoard[]
       limit: "2000",
     });
     if (period === "week") query.set("week", `eq.${weekKey()}`);
-    const rows = await select<ArtistRow>("scores", query);
+    const rows = await select<ScoreRow>("scores", query);
     return rankArtists(rows.map((row) => ({ categoryId: row.category_id, entry: toEntry(row) })));
   } catch (err) {
     console.error("topArtists", err);

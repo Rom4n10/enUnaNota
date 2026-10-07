@@ -12,6 +12,7 @@ type Props = {
   limit?: number;
   format?: (score: number) => string;
   emptyText?: string;
+  detail?: (entry: ScoreEntry) => string | undefined;
 };
 
 const defaultFormat = (score: number) => score.toLocaleString("es-AR");
@@ -22,6 +23,7 @@ export function Leaderboard({
   limit = 5,
   format = defaultFormat,
   emptyText,
+  detail,
 }: Props) {
   if (!entries.length && !emptyText) return null;
   return (
@@ -52,7 +54,10 @@ export function Leaderboard({
             >
               {i + 1}
             </span>
-            <span className="flex-1 truncate font-semibold text-white/80">{entry.name}</span>
+            <span className="flex min-w-0 flex-1 flex-col">
+              <span className="truncate font-semibold text-white/80">{entry.name}</span>
+              {detail?.(entry) && <span className="truncate text-xs text-white/40">{detail(entry)}</span>}
+            </span>
             <span className="font-display font-bold tabular-nums">{format(entry.score)}</span>
           </motion.li>
         ))}
